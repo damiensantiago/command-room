@@ -77,10 +77,7 @@ class Seosuite_Admin_Menu {
 	}
 
 	public static function render_sitemaps() {
-		self::render_placeholder(
-			__( 'Sitemaps', 'seo-suite' ),
-			__( 'Fase 3: definiciones de sitemap configurables (blog, transaccionales, corporativas, News...).', 'seo-suite' )
-		);
+		Seosuite_Sitemap_Settings::render_page();
 	}
 
 	public static function render_redirects() {

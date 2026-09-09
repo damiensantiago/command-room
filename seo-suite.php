@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SEO Suite
  * Description: Suite de SEO propia (metas, datos estructurados, sitemaps y redirecciones por plantilla) para sustituir Rank Math en los sitios WordPress de Damien.
- * Version: 0.3.0-fase2
+ * Version: 0.4.0-fase3
  * Author: Damien Santiago
  * Text Domain: seo-suite
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SEOSUITE_VERSION', '0.3.0-fase2' );
+define( 'SEOSUITE_VERSION', '0.4.0-fase3' );
 define( 'SEOSUITE_FILE', __FILE__ );
 define( 'SEOSUITE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SEOSUITE_URL', plugin_dir_url( __FILE__ ) );
@@ -27,10 +27,13 @@ require_once SEOSUITE_DIR . 'includes/migration/class-rankmath-importer.php';
 require_once SEOSUITE_DIR . 'includes/schema/class-schema-settings.php';
 require_once SEOSUITE_DIR . 'includes/schema/class-schema-builder.php';
 require_once SEOSUITE_DIR . 'includes/schema/class-schema-output.php';
+require_once SEOSUITE_DIR . 'includes/sitemap/class-sitemap-settings.php';
+require_once SEOSUITE_DIR . 'includes/sitemap/class-sitemap-render.php';
+require_once SEOSUITE_DIR . 'includes/sitemap/class-sitemap-rewrite.php';
 
 /**
- * Fase 1 (Metas) + Fase 2 (Datos estructurados). El resto de módulos
- * (sitemap, redirects) se enganchan en fases sucesivas.
+ * Fase 1 (Metas) + Fase 2 (Datos estructurados) + Fase 3 (Sitemaps).
+ * Queda Fase 4 (redirecciones) por enganchar.
  */
 function seosuite_bootstrap() {
 	Seosuite_Admin_Menu::init();
@@ -41,6 +44,9 @@ function seosuite_bootstrap() {
 	Seosuite_Rankmath_Importer::init();
 	Seosuite_Schema_Settings::init();
 	Seosuite_Schema_Output::init();
+	Seosuite_Sitemap_Settings::init();
+	Seosuite_Sitemap_Render::init();
+	Seosuite_Sitemap_Rewrite::init();
 }
 add_action( 'plugins_loaded', 'seosuite_bootstrap' );
 
