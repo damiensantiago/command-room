@@ -50,6 +50,7 @@ class Seosuite_Sitemap_Settings {
 					'slug'     => 'paginas',
 					'label'    => 'Páginas',
 					'enabled'  => true,
+					'source'   => 'posts',
 					'post_type' => 'page',
 					'taxonomy' => '',
 					'terms'    => '',
@@ -59,6 +60,7 @@ class Seosuite_Sitemap_Settings {
 					'slug'     => 'blog',
 					'label'    => 'Blog',
 					'enabled'  => true,
+					'source'   => 'posts',
 					'post_type' => 'post',
 					'taxonomy' => '',
 					'terms'    => '',
@@ -91,6 +93,7 @@ class Seosuite_Sitemap_Settings {
 				'slug'      => $slug,
 				'label'     => isset( $row['label'] ) ? sanitize_text_field( $row['label'] ) : $slug,
 				'enabled'   => ! empty( $row['enabled'] ),
+				'source'    => ( isset( $row['source'] ) && 'terms' === $row['source'] ) ? 'terms' : 'posts',
 				'post_type' => isset( $row['post_type'] ) ? sanitize_key( $row['post_type'] ) : 'post',
 				'taxonomy'  => isset( $row['taxonomy'] ) ? sanitize_key( $row['taxonomy'] ) : '',
 				'terms'     => isset( $row['terms'] ) ? sanitize_text_field( $row['terms'] ) : '',
@@ -110,7 +113,7 @@ class Seosuite_Sitemap_Settings {
 		$definitions = $opts['definitions'];
 		$blank_rows  = 3;
 		for ( $i = 0; $i < $blank_rows; $i++ ) {
-			$definitions[] = array( 'slug' => '', 'label' => '', 'enabled' => true, 'post_type' => 'post', 'taxonomy' => '', 'terms' => '', 'limit' => 1000 );
+			$definitions[] = array( 'slug' => '', 'label' => '', 'enabled' => true, 'source' => 'posts', 'post_type' => 'post', 'taxonomy' => '', 'terms' => '', 'limit' => 1000 );
 		}
 		?>
 		<div class="wrap seosuite-wrap">
@@ -149,9 +152,10 @@ class Seosuite_Sitemap_Settings {
 							<th><?php esc_html_e( 'Activa', 'seo-suite' ); ?></th>
 							<th><?php esc_html_e( 'Slug (URL)', 'seo-suite' ); ?></th>
 							<th><?php esc_html_e( 'Nombre', 'seo-suite' ); ?></th>
+							<th><?php esc_html_e( 'Origen', 'seo-suite' ); ?></th>
 							<th><?php esc_html_e( 'Tipo de contenido', 'seo-suite' ); ?></th>
 							<th><?php esc_html_e( 'Taxonomía', 'seo-suite' ); ?></th>
-							<th><?php esc_html_e( 'Términos (slugs, separados por coma)', 'seo-suite' ); ?></th>
+							<th><?php esc_html_e( 'Términos (slugs, separados por coma; vacío = todos)', 'seo-suite' ); ?></th>
 							<th><?php esc_html_e( 'Límite', 'seo-suite' ); ?></th>
 						</tr>
 					</thead>
@@ -162,11 +166,18 @@ class Seosuite_Sitemap_Settings {
 								<td><input type="text" name="definitions[<?php echo (int) $i; ?>][slug]" value="<?php echo esc_attr( $def['slug'] ); ?>" placeholder="<?php esc_attr_e( 'p. ej. transaccionales', 'seo-suite' ); ?>" /></td>
 								<td><input type="text" name="definitions[<?php echo (int) $i; ?>][label]" value="<?php echo esc_attr( $def['label'] ); ?>" /></td>
 								<td>
+									<select name="definitions[<?php echo (int) $i; ?>][source]">
+										<option value="posts" <?php selected( $def['source'] ?? 'posts', 'posts' ); ?>><?php esc_html_e( 'Posts', 'seo-suite' ); ?></option>
+										<option value="terms" <?php selected( $def['source'] ?? 'posts', 'terms' ); ?>><?php esc_html_e( 'URLs de archivo de término', 'seo-suite' ); ?></option>
+									</select>
+								</td>
+								<td>
 									<select name="definitions[<?php echo (int) $i; ?>][post_type]">
 										<?php foreach ( Seosuite_Meta_Settings::public_post_types() as $pt ) : ?>
 											<option value="<?php echo esc_attr( $pt->name ); ?>" <?php selected( $def['post_type'], $pt->name ); ?>><?php echo esc_html( $pt->labels->name ); ?></option>
 										<?php endforeach; ?>
 									</select>
+									<p class="description"><?php esc_html_e( 'Solo aplica si Origen = Posts', 'seo-suite' ); ?></p>
 								</td>
 								<td>
 									<select name="definitions[<?php echo (int) $i; ?>][taxonomy]">
@@ -175,6 +186,7 @@ class Seosuite_Sitemap_Settings {
 											<option value="<?php echo esc_attr( $tax->name ); ?>" <?php selected( $def['taxonomy'], $tax->name ); ?>><?php echo esc_html( $tax->labels->name ); ?></option>
 										<?php endforeach; ?>
 									</select>
+									<p class="description"><?php esc_html_e( 'Si Origen = URLs de archivo, esta taxonomía es obligatoria', 'seo-suite' ); ?></p>
 								</td>
 								<td><input type="text" name="definitions[<?php echo (int) $i; ?>][terms]" value="<?php echo esc_attr( $def['terms'] ); ?>" placeholder="cat-fisioterapia, cat-osteopatia" /></td>
 								<td><input type="number" name="definitions[<?php echo (int) $i; ?>][limit]" value="<?php echo esc_attr( $def['limit'] ); ?>" min="1" max="5000" class="small-text" /></td>
