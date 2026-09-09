@@ -73,10 +73,7 @@ class Seosuite_Admin_Menu {
 	}
 
 	public static function render_schema() {
-		self::render_placeholder(
-			__( 'Datos estructurados', 'seo-suite' ),
-			__( 'Fase 2: schema global del sitio y plantillas de schema por tipo de contenido.', 'seo-suite' )
-		);
+		Seosuite_Schema_Settings::render_page();
 	}
 
 	public static function render_sitemaps() {
@@ -155,6 +152,13 @@ class Seosuite_Admin_Menu {
 							<tr><th><?php esc_html_e( 'og:image', 'seo-suite' ); ?></th><td><?php echo esc_html( $data['og_image'] ? $data['og_image'] : '—' ); ?></td></tr>
 						</tbody>
 					</table>
+					<?php $schema = Seosuite_Schema_Builder::build_for_post( absint( $_GET['seosuite_preview_id'] ) ); ?>
+					<p style="margin-top:1em;"><strong><?php esc_html_e( 'Datos estructurados (@graph)', 'seo-suite' ); ?></strong></p>
+					<?php if ( $schema ) : ?>
+						<pre style="max-width:800px;max-height:400px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;"><?php echo esc_html( wp_json_encode( $schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) ); ?></pre>
+					<?php else : ?>
+						<p><?php esc_html_e( 'Este tipo de contenido tiene el schema desactivado en Ajustes → Datos estructurados.', 'seo-suite' ); ?></p>
+					<?php endif; ?>
 				<?php else : ?>
 					<p><?php esc_html_e( 'No se encontró ese post.', 'seo-suite' ); ?></p>
 				<?php endif; ?>
@@ -178,6 +182,9 @@ class Seosuite_Admin_Menu {
 							<tr><th><?php esc_html_e( 'Canonical', 'seo-suite' ); ?></th><td><?php echo esc_html( $data['canonical'] ); ?></td></tr>
 						</tbody>
 					</table>
+					<?php $schema = Seosuite_Schema_Builder::build_for_term( $term ); ?>
+					<p style="margin-top:1em;"><strong><?php esc_html_e( 'Datos estructurados (@graph)', 'seo-suite' ); ?></strong></p>
+					<pre style="max-width:800px;max-height:400px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;"><?php echo esc_html( wp_json_encode( $schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) ); ?></pre>
 				<?php else : ?>
 					<p><?php esc_html_e( 'No se encontró ese término.', 'seo-suite' ); ?></p>
 				<?php endif; ?>
