@@ -32,9 +32,11 @@ class Seosuite_Admin_Menu {
 		$submenus = array(
 			'general'   => __( 'General', 'seo-suite' ),
 			'metas'     => __( 'Metas', 'seo-suite' ),
+			'variables' => __( 'Variables', 'seo-suite' ),
 			'schema'    => __( 'Datos estructurados', 'seo-suite' ),
 			'sitemaps'  => __( 'Sitemaps', 'seo-suite' ),
 			'redirects' => __( 'Redirecciones', 'seo-suite' ),
+			'robots'    => __( 'Robots.txt', 'seo-suite' ),
 			'tools'     => __( 'Herramientas', 'seo-suite' ),
 		);
 
@@ -72,6 +74,10 @@ class Seosuite_Admin_Menu {
 		Seosuite_Meta_Settings::render_page();
 	}
 
+	public static function render_variables() {
+		Seosuite_Variables_Glossary::render_page();
+	}
+
 	public static function render_schema() {
 		Seosuite_Schema_Settings::render_page();
 	}
@@ -82,6 +88,10 @@ class Seosuite_Admin_Menu {
 
 	public static function render_redirects() {
 		Seosuite_Redirect_Admin::render_page();
+	}
+
+	public static function render_robots() {
+		Seosuite_Robots_Settings::render_page();
 	}
 
 	public static function render_tools() {

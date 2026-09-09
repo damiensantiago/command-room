@@ -11,7 +11,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Seosuite_Sitemap_Render {
 
-	const CACHE_TTL = 12 * HOUR_IN_SECONDS;
+	const CACHE_TTL      = 12 * HOUR_IN_SECONDS;
+	const NEWS_CACHE_TTL = 15 * MINUTE_IN_SECONDS; // News cambia rápido: 12h dejaría servir un sitemap con artículos ya fuera de la ventana de 48h
+	const NEWS_WINDOW_HOURS = 48; // límite que exige Google News: fuera de ahí el artículo sale del sitemap (sigue existiendo, solo deja de anunciarse como noticia)
 
 	public static function init() {
 		foreach ( array( 'save_post', 'deleted_post', 'trashed_post' ) as $hook ) {
@@ -49,6 +51,10 @@ class Seosuite_Sitemap_Render {
 	}
 
 	public static function render_definition( $def ) {
+		if ( 'news' === ( $def['format'] ?? 'standard' ) ) {
+			return self::render_news_definition( $def );
+		}
+
 		$cache_key = 'seosuite_sitemap_' . $def['slug'];
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached ) {
@@ -73,6 +79,76 @@ class Seosuite_Sitemap_Render {
 
 		set_transient( $cache_key, $xml, self::CACHE_TTL );
 		return $xml;
+	}
+
+	/**
+	 * Sitemap de Google News: namespace news:news, solo posts publicados en
+	 * las últimas 48h (fuera de esa ventana Google pide sacarlos del
+	 * sitemap — el artículo sigue existiendo, solo deja de "anunciarse").
+	 * Ignora "terms" como origen: un archivo de categoría no es una noticia.
+	 */
+	private static function render_news_definition( $def ) {
+		$cache_key = 'seosuite_sitemap_' . $def['slug'];
+		$cached    = get_transient( $cache_key );
+		if ( false !== $cached ) {
+			return $cached;
+		}
+
+		$publication_name = Seosuite_Sitemap_Settings::get_news_publication_name();
+		$language          = Seosuite_Sitemap_Settings::get_news_language();
+
+		$xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+		$xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">' . "\n";
+
+		foreach ( self::query_news_post_ids( $def ) as $post_id ) {
+			$headline = wp_trim_words( get_the_title( $post_id ), 20, '' );
+
+			$xml .= "\t<url>\n";
+			$xml .= "\t\t<loc>" . esc_xml( get_permalink( $post_id ) ) . "</loc>\n";
+			$xml .= "\t\t<news:news>\n";
+			$xml .= "\t\t\t<news:publication>\n";
+			$xml .= "\t\t\t\t<news:name>" . esc_xml( $publication_name ) . "</news:name>\n";
+			$xml .= "\t\t\t\t<news:language>" . esc_xml( $language ) . "</news:language>\n";
+			$xml .= "\t\t\t</news:publication>\n";
+			$xml .= "\t\t\t<news:publication_date>" . esc_xml( get_the_date( 'c', $post_id ) ) . "</news:publication_date>\n";
+			$xml .= "\t\t\t<news:title>" . esc_xml( $headline ) . "</news:title>\n";
+			$xml .= "\t\t</news:news>\n";
+			$xml .= "\t</url>\n";
+		}
+
+		$xml .= '</urlset>';
+
+		set_transient( $cache_key, $xml, self::NEWS_CACHE_TTL );
+		return $xml;
+	}
+
+	private static function query_news_post_ids( $def ) {
+		$args = array(
+			'post_type'      => $def['post_type'],
+			'post_status'    => 'publish',
+			'posts_per_page' => min( (int) $def['limit'], 1000 ), // 1000 es el máximo que admite Google News por sitemap
+			'orderby'        => 'date',
+			'order'          => 'DESC',
+			'no_found_rows'  => true,
+			'fields'         => 'ids',
+			'date_query'     => array(
+				array( 'after' => self::NEWS_WINDOW_HOURS . ' hours ago' ),
+			),
+		);
+
+		if ( ! empty( $def['taxonomy'] ) && ! empty( $def['terms'] ) ) {
+			$terms = array_filter( array_map( 'trim', explode( ',', $def['terms'] ) ) );
+			if ( $terms ) {
+				$args['tax_query'] = array( array(
+					'taxonomy' => $def['taxonomy'],
+					'field'    => 'slug',
+					'terms'    => $terms,
+				) );
+			}
+		}
+
+		$query = new WP_Query( $args );
+		return $query->posts;
 	}
 
 	/**

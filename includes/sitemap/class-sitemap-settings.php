@@ -44,13 +44,16 @@ class Seosuite_Sitemap_Settings {
 
 	private static function defaults() {
 		return array(
-			'live_output' => false,
-			'definitions' => array(
+			'live_output'           => false,
+			'news_publication_name' => get_bloginfo( 'name' ),
+			'news_language'         => substr( get_bloginfo( 'language' ), 0, 2 ) ?: 'es',
+			'definitions'           => array(
 				array(
 					'slug'     => 'paginas',
 					'label'    => 'Páginas',
 					'enabled'  => true,
 					'source'   => 'posts',
+					'format'   => 'standard',
 					'post_type' => 'page',
 					'taxonomy' => '',
 					'terms'    => '',
@@ -61,6 +64,7 @@ class Seosuite_Sitemap_Settings {
 					'label'    => 'Blog',
 					'enabled'  => true,
 					'source'   => 'posts',
+					'format'   => 'standard',
 					'post_type' => 'post',
 					'taxonomy' => '',
 					'terms'    => '',
@@ -70,6 +74,16 @@ class Seosuite_Sitemap_Settings {
 		);
 	}
 
+	public static function get_news_publication_name() {
+		$opts = self::get_options();
+		return $opts['news_publication_name'];
+	}
+
+	public static function get_news_language() {
+		$opts = self::get_options();
+		return $opts['news_language'];
+	}
+
 	public static function handle_save() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'seo-suite' ) );
@@ -77,8 +91,10 @@ class Seosuite_Sitemap_Settings {
 		check_admin_referer( 'seosuite_save_sitemap_settings' );
 
 		$opts = array(
-			'live_output' => ! empty( $_POST['live_output'] ),
-			'definitions' => array(),
+			'live_output'           => ! empty( $_POST['live_output'] ),
+			'news_publication_name' => isset( $_POST['news_publication_name'] ) ? sanitize_text_field( wp_unslash( $_POST['news_publication_name'] ) ) : get_bloginfo( 'name' ),
+			'news_language'         => isset( $_POST['news_language'] ) ? sanitize_key( wp_unslash( $_POST['news_language'] ) ) : 'es',
+			'definitions'           => array(),
 		);
 
 		$rows = isset( $_POST['definitions'] ) && is_array( $_POST['definitions'] ) ? wp_unslash( $_POST['definitions'] ) : array();
@@ -94,6 +110,7 @@ class Seosuite_Sitemap_Settings {
 				'label'     => isset( $row['label'] ) ? sanitize_text_field( $row['label'] ) : $slug,
 				'enabled'   => ! empty( $row['enabled'] ),
 				'source'    => ( isset( $row['source'] ) && 'terms' === $row['source'] ) ? 'terms' : 'posts',
+				'format'    => ( isset( $row['format'] ) && 'news' === $row['format'] ) ? 'news' : 'standard',
 				'post_type' => isset( $row['post_type'] ) ? sanitize_key( $row['post_type'] ) : 'post',
 				'taxonomy'  => isset( $row['taxonomy'] ) ? sanitize_key( $row['taxonomy'] ) : '',
 				'terms'     => isset( $row['terms'] ) ? sanitize_text_field( $row['terms'] ) : '',
@@ -113,7 +130,7 @@ class Seosuite_Sitemap_Settings {
 		$definitions = $opts['definitions'];
 		$blank_rows  = 3;
 		for ( $i = 0; $i < $blank_rows; $i++ ) {
-			$definitions[] = array( 'slug' => '', 'label' => '', 'enabled' => true, 'source' => 'posts', 'post_type' => 'post', 'taxonomy' => '', 'terms' => '', 'limit' => 1000 );
+			$definitions[] = array( 'slug' => '', 'label' => '', 'enabled' => true, 'source' => 'posts', 'format' => 'standard', 'post_type' => 'post', 'taxonomy' => '', 'terms' => '', 'limit' => 1000 );
 		}
 		?>
 		<div class="wrap seosuite-wrap">
@@ -143,6 +160,17 @@ class Seosuite_Sitemap_Settings {
 							</label>
 						</td>
 					</tr>
+					<tr>
+						<th><label for="news_publication_name"><?php esc_html_e( 'Google News — nombre de publicación', 'seo-suite' ); ?></label></th>
+						<td>
+							<input type="text" id="news_publication_name" name="news_publication_name" value="<?php echo esc_attr( $opts['news_publication_name'] ); ?>" class="regular-text" />
+							<p class="description"><?php esc_html_e( 'Tiene que coincidir exactamente con el nombre registrado en Google Publisher Center.', 'seo-suite' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th><label for="news_language"><?php esc_html_e( 'Google News — idioma', 'seo-suite' ); ?></label></th>
+						<td><input type="text" id="news_language" name="news_language" value="<?php echo esc_attr( $opts['news_language'] ); ?>" class="small-text" maxlength="5" placeholder="es" /></td>
+					</tr>
 				</table>
 
 				<h2><?php esc_html_e( 'Definiciones', 'seo-suite' ); ?></h2>
@@ -153,6 +181,7 @@ class Seosuite_Sitemap_Settings {
 							<th><?php esc_html_e( 'Slug (URL)', 'seo-suite' ); ?></th>
 							<th><?php esc_html_e( 'Nombre', 'seo-suite' ); ?></th>
 							<th><?php esc_html_e( 'Origen', 'seo-suite' ); ?></th>
+							<th><?php esc_html_e( 'Formato', 'seo-suite' ); ?></th>
 							<th><?php esc_html_e( 'Tipo de contenido', 'seo-suite' ); ?></th>
 							<th><?php esc_html_e( 'Taxonomía', 'seo-suite' ); ?></th>
 							<th><?php esc_html_e( 'Términos (slugs, separados por coma; vacío = todos)', 'seo-suite' ); ?></th>
@@ -170,6 +199,13 @@ class Seosuite_Sitemap_Settings {
 										<option value="posts" <?php selected( $def['source'] ?? 'posts', 'posts' ); ?>><?php esc_html_e( 'Posts', 'seo-suite' ); ?></option>
 										<option value="terms" <?php selected( $def['source'] ?? 'posts', 'terms' ); ?>><?php esc_html_e( 'URLs de archivo de término', 'seo-suite' ); ?></option>
 									</select>
+								</td>
+								<td>
+									<select name="definitions[<?php echo (int) $i; ?>][format]">
+										<option value="standard" <?php selected( $def['format'] ?? 'standard', 'standard' ); ?>><?php esc_html_e( 'Estándar', 'seo-suite' ); ?></option>
+										<option value="news" <?php selected( $def['format'] ?? 'standard', 'news' ); ?>><?php esc_html_e( 'Google News', 'seo-suite' ); ?></option>
+									</select>
+									<p class="description"><?php esc_html_e( 'News: solo posts publicados en las últimas 48h, con las etiquetas news:*', 'seo-suite' ); ?></p>
 								</td>
 								<td>
 									<select name="definitions[<?php echo (int) $i; ?>][post_type]">
