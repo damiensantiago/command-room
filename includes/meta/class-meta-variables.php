@@ -51,6 +51,7 @@ class Seosuite_Meta_Variables {
 			$vars['excerpt']      = self::get_excerpt( $post );
 			$vars['excerpt_only'] = $vars['excerpt'];
 			$vars['author_name']  = get_the_author_meta( 'display_name', $post->post_author );
+			$vars['author']       = $vars['author_name']; // alias: nombre de variable de Rank Math para el autor
 			$vars['date']         = get_the_date( '', $post );
 			$vars['category']     = self::get_primary_category_name( $post );
 		} elseif ( $term instanceof WP_Term ) {
@@ -58,6 +59,7 @@ class Seosuite_Meta_Variables {
 
 			$vars['title']            = $term->name;
 			$vars['term_title']       = $term->name;
+			$vars['term']             = $term->name; // alias: nombre de variable de Rank Math para el término
 			$vars['term_description'] = $term->description;
 			$vars['category']         = $term->name;
 			$vars['excerpt']          = $excerpt;

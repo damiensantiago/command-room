@@ -159,6 +159,29 @@ class Seosuite_Admin_Menu {
 					<p><?php esc_html_e( 'No se encontró ese post.', 'seo-suite' ); ?></p>
 				<?php endif; ?>
 			<?php endif; ?>
+
+			<form method="get" style="margin-top:1.5em;">
+				<input type="hidden" name="page" value="seosuite-tools" />
+				<label for="seosuite_preview_term"><?php esc_html_e( 'ID de término (categoría/etiqueta)', 'seo-suite' ); ?></label>
+				<input type="number" id="seosuite_preview_term" name="seosuite_preview_term" value="<?php echo isset( $_GET['seosuite_preview_term'] ) ? esc_attr( absint( $_GET['seosuite_preview_term'] ) ) : ''; ?>" />
+				<?php submit_button( __( 'Ver vista previa', 'seo-suite' ), 'secondary', '', false ); ?>
+			</form>
+
+			<?php if ( ! empty( $_GET['seosuite_preview_term'] ) ) : ?>
+				<?php $term = get_term( absint( $_GET['seosuite_preview_term'] ) ); ?>
+				<?php $data = ( $term && ! is_wp_error( $term ) ) ? Seosuite_Meta_Resolver::resolve_for_term( $term ) : null; ?>
+				<?php if ( $data ) : ?>
+					<table class="widefat" style="max-width:800px;margin-top:1em;">
+						<tbody>
+							<tr><th><?php esc_html_e( 'Título', 'seo-suite' ); ?></th><td><?php echo esc_html( $data['title'] ); ?></td></tr>
+							<tr><th><?php esc_html_e( 'Descripción', 'seo-suite' ); ?></th><td><?php echo esc_html( $data['description'] ); ?></td></tr>
+							<tr><th><?php esc_html_e( 'Canonical', 'seo-suite' ); ?></th><td><?php echo esc_html( $data['canonical'] ); ?></td></tr>
+						</tbody>
+					</table>
+				<?php else : ?>
+					<p><?php esc_html_e( 'No se encontró ese término.', 'seo-suite' ); ?></p>
+				<?php endif; ?>
+			<?php endif; ?>
 		</div>
 		<?php
 	}
