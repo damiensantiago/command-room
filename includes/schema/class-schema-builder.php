@@ -30,11 +30,16 @@ class Seosuite_Schema_Builder {
 			self::breadcrumb_node( self::breadcrumb_items_for_post( $post ) ),
 		);
 
+		// headline usa el título real del post, no el título SEO con %sep%
+		// %sitename% añadido: Google penaliza un headline que no es el
+		// titular real y recomienda quedarse por debajo de ~110 caracteres.
+		$headline = wp_trim_words( get_the_title( $post ), 20, '' );
+
 		$node = array(
 			'@type'            => $type,
 			'@id'              => get_permalink( $post ) . '#' . strtolower( $type ),
-			'headline'         => $meta['title'],
-			'name'             => $meta['title'],
+			'headline'         => $headline,
+			'name'             => $headline,
 			'description'      => $meta['description'],
 			'url'              => get_permalink( $post ),
 			'inLanguage'        => get_bloginfo( 'language' ),
