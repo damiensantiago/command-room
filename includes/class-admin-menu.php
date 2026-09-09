@@ -69,10 +69,7 @@ class Seosuite_Admin_Menu {
 	}
 
 	public static function render_metas() {
-		self::render_placeholder(
-			__( 'Metas', 'seo-suite' ),
-			__( 'Fase 1: plantillas de título/descripción por tipo de contenido, variables dinámicas y override por post.', 'seo-suite' )
-		);
+		Seosuite_Meta_Settings::render_page();
 	}
 
 	public static function render_schema() {
@@ -97,9 +94,72 @@ class Seosuite_Admin_Menu {
 	}
 
 	public static function render_tools() {
-		self::render_placeholder(
-			__( 'Herramientas', 'seo-suite' ),
-			__( 'Importador desde Rank Math y utilidades varias — llega junto con cada módulo correspondiente.', 'seo-suite' )
-		);
+		?>
+		<div class="wrap seosuite-wrap">
+			<h1><?php esc_html_e( 'Herramientas', 'seo-suite' ); ?></h1>
+
+			<h2><?php esc_html_e( 'Importar desde Rank Math', 'seo-suite' ); ?></h2>
+			<?php if ( isset( $_GET['seosuite_imported'] ) ) : ?>
+				<?php $report = get_transient( 'seosuite_import_report' ); ?>
+				<div class="notice notice-success">
+					<?php if ( $report ) : ?>
+						<p>
+							<?php
+							printf(
+								/* translators: 1: posts imported, 2: posts skipped, 3: posts found */
+								esc_html__( 'Metas importadas en %1$d posts (omitidos %2$d que ya tenían override propio, de %3$d encontrados con datos de Rank Math).', 'seo-suite' ),
+								(int) $report['posts']['imported'],
+								(int) $report['posts']['skipped'],
+								(int) $report['posts']['total_encontrados']
+							);
+							?>
+						</p>
+						<?php if ( ! empty( $report['templates']['imported'] ) ) : ?>
+							<p><?php esc_html_e( 'Plantillas globales importadas:', 'seo-suite' ); ?> <?php echo esc_html( implode( ', ', $report['templates']['campos'] ) ); ?></p>
+						<?php else : ?>
+							<p><?php esc_html_e( 'No se encontraron plantillas globales de Rank Math que importar.', 'seo-suite' ); ?></p>
+						<?php endif; ?>
+					<?php else : ?>
+						<p><?php esc_html_e( 'Importación completada.', 'seo-suite' ); ?></p>
+					<?php endif; ?>
+				</div>
+			<?php endif; ?>
+
+			<p><?php esc_html_e( 'Copia las plantillas globales y las metas por post (título, descripción, canonical, robots) desde Rank Math. No modifica ni borra nada de Rank Math, y no sobrescribe posts que ya tengan un override propio en SEO Suite.', 'seo-suite' ); ?></p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( 'seosuite_import_rankmath' ); ?>
+				<input type="hidden" name="action" value="seosuite_import_rankmath" />
+				<?php submit_button( __( 'Importar desde Rank Math', 'seo-suite' ), 'primary', 'submit', false ); ?>
+			</form>
+
+			<hr />
+
+			<h2><?php esc_html_e( 'Vista previa de metas', 'seo-suite' ); ?></h2>
+			<p><?php esc_html_e( 'Calcula lo que imprimiría SEO Suite para un post, sin activar la salida en el sitio. Útil para comparar contra lo que sirve Rank Math ahora mismo.', 'seo-suite' ); ?></p>
+			<form method="get">
+				<input type="hidden" name="page" value="seosuite-tools" />
+				<label for="seosuite_preview_id"><?php esc_html_e( 'ID de post', 'seo-suite' ); ?></label>
+				<input type="number" id="seosuite_preview_id" name="seosuite_preview_id" value="<?php echo isset( $_GET['seosuite_preview_id'] ) ? esc_attr( absint( $_GET['seosuite_preview_id'] ) ) : ''; ?>" />
+				<?php submit_button( __( 'Ver vista previa', 'seo-suite' ), 'secondary', '', false ); ?>
+			</form>
+
+			<?php if ( ! empty( $_GET['seosuite_preview_id'] ) ) : ?>
+				<?php $data = Seosuite_Meta_Resolver::resolve_for_post( absint( $_GET['seosuite_preview_id'] ) ); ?>
+				<?php if ( $data ) : ?>
+					<table class="widefat" style="max-width:800px;margin-top:1em;">
+						<tbody>
+							<tr><th><?php esc_html_e( 'Título', 'seo-suite' ); ?></th><td><?php echo esc_html( $data['title'] ); ?></td></tr>
+							<tr><th><?php esc_html_e( 'Descripción', 'seo-suite' ); ?></th><td><?php echo esc_html( $data['description'] ); ?></td></tr>
+							<tr><th><?php esc_html_e( 'Canonical', 'seo-suite' ); ?></th><td><?php echo esc_html( $data['canonical'] ); ?></td></tr>
+							<tr><th><?php esc_html_e( 'Robots', 'seo-suite' ); ?></th><td><?php echo esc_html( ( $data['noindex'] ? 'noindex' : 'index' ) . ', ' . ( $data['nofollow'] ? 'nofollow' : 'follow' ) ); ?></td></tr>
+							<tr><th><?php esc_html_e( 'og:image', 'seo-suite' ); ?></th><td><?php echo esc_html( $data['og_image'] ? $data['og_image'] : '—' ); ?></td></tr>
+						</tbody>
+					</table>
+				<?php else : ?>
+					<p><?php esc_html_e( 'No se encontró ese post.', 'seo-suite' ); ?></p>
+				<?php endif; ?>
+			<?php endif; ?>
+		</div>
+		<?php
 	}
 }
