@@ -27,8 +27,11 @@ class Seosuite_Meta_Resolver {
 		$template = Seosuite_Meta_Settings::get_post_type_template( $post->post_type );
 		$context  = array( 'post' => $post );
 
-		$title = $override_title ? $override_title : Seosuite_Meta_Variables::replace( $template['title'], $context );
-		$desc  = $override_desc ? $override_desc : Seosuite_Meta_Variables::replace( $template['description'], $context );
+		// Los overrides también pasan por el motor de variables: algunos títulos
+		// importados de Rank Math guardan %sep%/%sitename% sin resolver, y un
+		// override manual puede querer usar variables igualmente.
+		$title = Seosuite_Meta_Variables::replace( $override_title ? $override_title : $template['title'], $context );
+		$desc  = Seosuite_Meta_Variables::replace( $override_desc ? $override_desc : $template['description'], $context );
 
 		if ( ! $canonical ) {
 			$canonical = get_permalink( $post );
