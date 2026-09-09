@@ -15,6 +15,7 @@ class Seosuite_Rankmath_Importer {
 
 	public static function init() {
 		add_action( 'admin_post_seosuite_import_rankmath', array( __CLASS__, 'handle_import' ) );
+		add_action( 'admin_post_seosuite_import_rankmath_redirects', array( __CLASS__, 'handle_import_redirects' ) );
 	}
 
 	public static function is_rankmath_active() {
@@ -140,5 +141,74 @@ class Seosuite_Rankmath_Importer {
 		}
 
 		return array( 'imported' => $imported, 'skipped' => $skipped, 'total_encontrados' => count( $query->posts ) );
+	}
+
+	public static function handle_import_redirects() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'seo-suite' ) );
+		}
+		check_admin_referer( 'seosuite_import_rankmath_redirects' );
+
+		$result = self::import_redirects();
+		set_transient( 'seosuite_import_redirects_report', $result, 60 );
+
+		wp_safe_redirect( add_query_arg( 'seosuite_imported_redirects', '1', wp_get_referer() ) );
+		exit;
+	}
+
+	/**
+	 * Importa las reglas ACTIVAS (no "trashed") de wp_rank_math_redirections.
+	 * Cada regla de Rank Math puede tener varios patrones de origen para un
+	 * mismo destino (columna "sources", serializada) — se explota en una
+	 * fila propia por patrón. Solo se importan comparaciones "exact" y
+	 * "regex"; el resto ("contains", "start", "end") se deja fuera porque
+	 * traducir su semántica exacta no es trivial y preferimos no adivinar.
+	 * No borra ni modifica nada en Rank Math.
+	 */
+	private static function import_redirects() {
+		global $wpdb;
+		$table = $wpdb->prefix . 'rank_math_redirections';
+
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+			return array( 'imported' => 0, 'omitted' => 0, 'reason' => 'No existe la tabla de redirecciones de Rank Math.' );
+		}
+
+		$rows = $wpdb->get_results( "SELECT * FROM $table WHERE status = 'active'", ARRAY_A );
+
+		$imported = 0;
+		$omitted  = array();
+
+		foreach ( $rows as $row ) {
+			$sources = maybe_unserialize( $row['sources'] );
+			if ( ! is_array( $sources ) ) {
+				continue;
+			}
+
+			foreach ( $sources as $source ) {
+				$pattern    = isset( $source['pattern'] ) ? trim( $source['pattern'], '/' ) : '';
+				$comparison = isset( $source['comparison'] ) ? $source['comparison'] : '';
+
+				if ( '' === $pattern ) {
+					continue;
+				}
+
+				if ( ! in_array( $comparison, array( 'exact', 'regex' ), true ) ) {
+					$omitted[] = $pattern . ' (comparación "' . $comparison . '" no soportada)';
+					continue;
+				}
+
+				Seosuite_Redirect_Table::insert( array(
+					'source'        => $pattern,
+					'source_type'   => $comparison,
+					'destination'   => esc_url_raw( $row['url_to'] ),
+					'redirect_type' => (int) $row['header_code'],
+					'status'        => 1,
+					'hits'          => (int) $row['hits'],
+				) );
+				$imported++;
+			}
+		}
+
+		return array( 'imported' => $imported, 'omitted' => $omitted );
 	}
 }

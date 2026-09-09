@@ -81,10 +81,7 @@ class Seosuite_Admin_Menu {
 	}
 
 	public static function render_redirects() {
-		self::render_placeholder(
-			__( 'Redirecciones', 'seo-suite' ),
-			__( 'Fase 4: gestión de redirecciones 301/302/307 por motor interno de WordPress.', 'seo-suite' )
-		);
+		Seosuite_Redirect_Admin::render_page();
 	}
 
 	public static function render_tools() {
@@ -124,6 +121,38 @@ class Seosuite_Admin_Menu {
 				<?php wp_nonce_field( 'seosuite_import_rankmath' ); ?>
 				<input type="hidden" name="action" value="seosuite_import_rankmath" />
 				<?php submit_button( __( 'Importar desde Rank Math', 'seo-suite' ), 'primary', 'submit', false ); ?>
+			</form>
+
+			<hr />
+
+			<h2><?php esc_html_e( 'Importar redirecciones desde Rank Math', 'seo-suite' ); ?></h2>
+			<?php if ( isset( $_GET['seosuite_imported_redirects'] ) ) : ?>
+				<?php $rr = get_transient( 'seosuite_import_redirects_report' ); ?>
+				<div class="notice notice-success">
+					<?php if ( $rr ) : ?>
+						<p>
+							<?php
+							printf(
+								/* translators: %d: número de redirecciones importadas */
+								esc_html__( '%d redirecciones importadas.', 'seo-suite' ),
+								(int) $rr['imported']
+							);
+							?>
+						</p>
+						<?php if ( ! empty( $rr['omitted'] ) ) : ?>
+							<p><?php esc_html_e( 'Omitidas (comparación no soportada, revisar a mano en Rank Math):', 'seo-suite' ); ?> <?php echo esc_html( implode( ', ', $rr['omitted'] ) ); ?></p>
+						<?php endif; ?>
+						<p><strong><?php esc_html_e( 'Revísalas en SEO → Redirecciones antes de activar la salida en el sitio', 'seo-suite' ); ?></strong> — <?php esc_html_e( 'por ejemplo la regla de "ecografia", que ya está marcada como pendiente de borrar en Rank Math.', 'seo-suite' ); ?></p>
+					<?php else : ?>
+						<p><?php esc_html_e( 'Importación completada.', 'seo-suite' ); ?></p>
+					<?php endif; ?>
+				</div>
+			<?php endif; ?>
+			<p><?php esc_html_e( 'Copia las reglas activas del gestor de redirecciones de Rank Math a la tabla propia de SEO Suite. No borra ni modifica nada en Rank Math.', 'seo-suite' ); ?></p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( 'seosuite_import_rankmath_redirects' ); ?>
+				<input type="hidden" name="action" value="seosuite_import_rankmath_redirects" />
+				<?php submit_button( __( 'Importar redirecciones', 'seo-suite' ), 'primary', 'submit', false ); ?>
 			</form>
 
 			<hr />
