@@ -27,7 +27,7 @@ class Seosuite_Schema_Builder {
 		$graph = array(
 			self::organization_node(),
 			self::website_node(),
-			self::breadcrumb_node( self::breadcrumb_items_for_post( $post ) ),
+			self::breadcrumb_node( Seosuite_Breadcrumbs::get_items_for_post( $post ) ),
 		);
 
 		// headline usa el título real del post, no el título SEO con %sep%
@@ -78,7 +78,7 @@ class Seosuite_Schema_Builder {
 		$graph = array(
 			self::organization_node(),
 			self::website_node(),
-			self::breadcrumb_node( self::breadcrumb_items_for_term( $term ) ),
+			self::breadcrumb_node( Seosuite_Breadcrumbs::get_items_for_term( $term ) ),
 			array_filter( array(
 				'@type'       => 'CollectionPage',
 				'@id'         => $url . '#collectionpage',
@@ -97,7 +97,7 @@ class Seosuite_Schema_Builder {
 		$graph = array(
 			self::organization_node(),
 			self::website_node(),
-			self::breadcrumb_node( array( array( 'name' => __( 'Inicio', 'seo-suite' ), 'url' => home_url( '/' ) ) ) ),
+			self::breadcrumb_node( Seosuite_Breadcrumbs::get_items_for_home() ),
 		);
 
 		return array( '@context' => 'https://schema.org', '@graph' => $graph );
@@ -186,49 +186,6 @@ class Seosuite_Schema_Builder {
 			'timeRequired' => 'PT' . $minutes . 'M',
 			'keywords'     => $keywords ? implode( ', ', $keywords ) : '',
 		) );
-	}
-
-	/**
-	 * Migas de pan genéricas y portables: no depende de italae26_mod_crumbs()
-	 * (esa función solo pinta un array $niveles que cada plantilla de
-	 * italae-home-2026 construye a mano — no hay una función reutilizable de
-	 * la que leer la estructura). Aquí se recalcula con el criterio estándar
-	 * de WordPress para que el mismo código sirva en cualquier sitio.
-	 */
-	private static function breadcrumb_items_for_post( WP_Post $post ) {
-		$items = array( array( 'name' => __( 'Inicio', 'seo-suite' ), 'url' => home_url( '/' ) ) );
-
-		if ( is_post_type_hierarchical( $post->post_type ) ) {
-			$ancestors = array_reverse( get_post_ancestors( $post ) );
-			foreach ( $ancestors as $ancestor_id ) {
-				$items[] = array( 'name' => get_the_title( $ancestor_id ), 'url' => get_permalink( $ancestor_id ) );
-			}
-		} else {
-			$terms = get_the_terms( $post, 'category' );
-			if ( $terms && ! is_wp_error( $terms ) ) {
-				$items[] = array( 'name' => $terms[0]->name, 'url' => get_term_link( $terms[0] ) );
-			}
-		}
-
-		$items[] = array( 'name' => get_the_title( $post ), 'url' => get_permalink( $post ) );
-
-		return $items;
-	}
-
-	private static function breadcrumb_items_for_term( WP_Term $term ) {
-		$items = array( array( 'name' => __( 'Inicio', 'seo-suite' ), 'url' => home_url( '/' ) ) );
-
-		$ancestors = array_reverse( get_ancestors( $term->term_id, $term->taxonomy ) );
-		foreach ( $ancestors as $ancestor_id ) {
-			$ancestor = get_term( $ancestor_id, $term->taxonomy );
-			if ( $ancestor && ! is_wp_error( $ancestor ) ) {
-				$items[] = array( 'name' => $ancestor->name, 'url' => get_term_link( $ancestor ) );
-			}
-		}
-
-		$items[] = array( 'name' => $term->name, 'url' => get_term_link( $term ) );
-
-		return $items;
 	}
 
 	private static function breadcrumb_node( $items ) {

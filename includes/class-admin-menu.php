@@ -30,14 +30,15 @@ class Seosuite_Admin_Menu {
 		);
 
 		$submenus = array(
-			'general'   => __( 'General', 'seo-suite' ),
-			'metas'     => __( 'Metas', 'seo-suite' ),
-			'variables' => __( 'Variables', 'seo-suite' ),
-			'schema'    => __( 'Datos estructurados', 'seo-suite' ),
-			'sitemaps'  => __( 'Sitemaps', 'seo-suite' ),
-			'redirects' => __( 'Redirecciones', 'seo-suite' ),
-			'robots'    => __( 'Robots.txt', 'seo-suite' ),
-			'tools'     => __( 'Herramientas', 'seo-suite' ),
+			'general'     => __( 'General', 'seo-suite' ),
+			'metas'       => __( 'Metas', 'seo-suite' ),
+			'variables'   => __( 'Variables', 'seo-suite' ),
+			'schema'      => __( 'Datos estructurados', 'seo-suite' ),
+			'breadcrumbs' => __( 'Breadcrumbs', 'seo-suite' ),
+			'sitemaps'    => __( 'Sitemaps', 'seo-suite' ),
+			'redirects'   => __( 'Redirecciones', 'seo-suite' ),
+			'robots'      => __( 'Robots.txt', 'seo-suite' ),
+			'tools'       => __( 'Herramientas', 'seo-suite' ),
 		);
 
 		foreach ( $submenus as $slug => $label ) {
@@ -80,6 +81,10 @@ class Seosuite_Admin_Menu {
 
 	public static function render_schema() {
 		Seosuite_Schema_Settings::render_page();
+	}
+
+	public static function render_breadcrumbs() {
+		Seosuite_Breadcrumb_Settings::render_page();
 	}
 
 	public static function render_sitemaps() {

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SEO Suite
  * Description: Suite de SEO propia (metas, datos estructurados, sitemaps y redirecciones por plantilla) para sustituir Rank Math en los sitios WordPress de Damien.
- * Version: 0.6.0
+ * Version: 0.7.0
  * Author: Damien Santiago
  * Text Domain: seo-suite
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SEOSUITE_VERSION', '0.6.0' );
+define( 'SEOSUITE_VERSION', '0.7.0' );
 define( 'SEOSUITE_FILE', __FILE__ );
 define( 'SEOSUITE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SEOSUITE_URL', plugin_dir_url( __FILE__ ) );
@@ -25,6 +25,8 @@ require_once SEOSUITE_DIR . 'includes/meta/class-meta-metabox.php';
 require_once SEOSUITE_DIR . 'includes/meta/class-meta-rest.php';
 require_once SEOSUITE_DIR . 'includes/meta/class-meta-output.php';
 require_once SEOSUITE_DIR . 'includes/migration/class-rankmath-importer.php';
+require_once SEOSUITE_DIR . 'includes/breadcrumbs/class-breadcrumb-settings.php';
+require_once SEOSUITE_DIR . 'includes/breadcrumbs/class-breadcrumbs.php';
 require_once SEOSUITE_DIR . 'includes/schema/class-schema-settings.php';
 require_once SEOSUITE_DIR . 'includes/schema/class-schema-builder.php';
 require_once SEOSUITE_DIR . 'includes/schema/class-schema-output.php';
@@ -48,6 +50,8 @@ function seosuite_bootstrap() {
 	Seosuite_Meta_Rest::init();
 	Seosuite_Meta_Output::init();
 	Seosuite_Rankmath_Importer::init();
+	Seosuite_Breadcrumb_Settings::init();
+	Seosuite_Breadcrumbs::init();
 	Seosuite_Schema_Settings::init();
 	Seosuite_Schema_Output::init();
 	Seosuite_Sitemap_Settings::init();
