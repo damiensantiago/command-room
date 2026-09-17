@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * de escritura conocidas). La caché se invalida sola al publicar/editar/
  * borrar contenido.
  */
-class Seosuite_Sitemap_Render {
+class Cmdroom_Sitemap_Render {
 
 	const CACHE_TTL      = 12 * HOUR_IN_SECONDS;
 	const NEWS_CACHE_TTL = 15 * MINUTE_IN_SECONDS; // News cambia rápido: 12h dejaría servir un sitemap con artículos ya fuera de la ventana de 48h
@@ -22,14 +22,14 @@ class Seosuite_Sitemap_Render {
 	}
 
 	public static function flush_cache() {
-		delete_transient( 'seosuite_sitemap_index' );
-		foreach ( Seosuite_Sitemap_Settings::get_enabled_definitions() as $def ) {
-			delete_transient( 'seosuite_sitemap_' . $def['slug'] );
+		delete_transient( 'cmdroom_sitemap_index' );
+		foreach ( Cmdroom_Sitemap_Settings::get_enabled_definitions() as $def ) {
+			delete_transient( 'cmdroom_sitemap_' . $def['slug'] );
 		}
 	}
 
 	public static function render_index() {
-		$cached = get_transient( 'seosuite_sitemap_index' );
+		$cached = get_transient( 'cmdroom_sitemap_index' );
 		if ( false !== $cached ) {
 			return $cached;
 		}
@@ -37,7 +37,7 @@ class Seosuite_Sitemap_Render {
 		$xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 		$xml .= '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
 
-		foreach ( Seosuite_Sitemap_Settings::get_enabled_definitions() as $def ) {
+		foreach ( Cmdroom_Sitemap_Settings::get_enabled_definitions() as $def ) {
 			$xml .= "\t<sitemap>\n";
 			$xml .= "\t\t<loc>" . esc_xml( home_url( '/sitemap-' . $def['slug'] . '.xml' ) ) . "</loc>\n";
 			$xml .= "\t\t<lastmod>" . esc_xml( self::latest_modified( $def ) ) . "</lastmod>\n";
@@ -46,7 +46,7 @@ class Seosuite_Sitemap_Render {
 
 		$xml .= '</sitemapindex>';
 
-		set_transient( 'seosuite_sitemap_index', $xml, self::CACHE_TTL );
+		set_transient( 'cmdroom_sitemap_index', $xml, self::CACHE_TTL );
 		return $xml;
 	}
 
@@ -55,7 +55,7 @@ class Seosuite_Sitemap_Render {
 			return self::render_news_definition( $def );
 		}
 
-		$cache_key = 'seosuite_sitemap_' . $def['slug'];
+		$cache_key = 'cmdroom_sitemap_' . $def['slug'];
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached ) {
 			return $cached;
@@ -88,14 +88,14 @@ class Seosuite_Sitemap_Render {
 	 * Ignora "terms" como origen: un archivo de categoría no es una noticia.
 	 */
 	private static function render_news_definition( $def ) {
-		$cache_key = 'seosuite_sitemap_' . $def['slug'];
+		$cache_key = 'cmdroom_sitemap_' . $def['slug'];
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached ) {
 			return $cached;
 		}
 
-		$publication_name = Seosuite_Sitemap_Settings::get_news_publication_name();
-		$language          = Seosuite_Sitemap_Settings::get_news_language();
+		$publication_name = Cmdroom_Sitemap_Settings::get_news_publication_name();
+		$language          = Cmdroom_Sitemap_Settings::get_news_language();
 
 		$xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 		$xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">' . "\n";

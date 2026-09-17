@@ -8,9 +8,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * aparece en el @graph de cada página) y el @type de schema que le
  * corresponde a cada tipo de contenido.
  */
-class Seosuite_Schema_Settings {
+class Cmdroom_Schema_Settings {
 
-	const OPTION = 'seosuite_schema_options';
+	const OPTION = 'cmdroom_schema_options';
 
 	const BUSINESS_TYPES = array(
 		'Organization'       => 'Organization (genérico)',
@@ -29,7 +29,7 @@ class Seosuite_Schema_Settings {
 	);
 
 	public static function init() {
-		add_action( 'admin_post_seosuite_save_schema_settings', array( __CLASS__, 'handle_save' ) );
+		add_action( 'admin_post_cmdroom_save_schema_settings', array( __CLASS__, 'handle_save' ) );
 	}
 
 	public static function is_live_output_enabled() {
@@ -56,7 +56,7 @@ class Seosuite_Schema_Settings {
 
 	private static function defaults() {
 		$post_types = array();
-		foreach ( Seosuite_Meta_Settings::public_post_types() as $pt ) {
+		foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) {
 			$post_types[ $pt->name ] = 'page' === $pt->name ? 'WebPage' : 'Article';
 		}
 
@@ -80,9 +80,9 @@ class Seosuite_Schema_Settings {
 
 	public static function handle_save() {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'seo-suite' ) );
+			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'command-room' ) );
 		}
-		check_admin_referer( 'seosuite_save_schema_settings' );
+		check_admin_referer( 'cmdroom_save_schema_settings' );
 
 		$opts = self::defaults();
 		$opts['live_output'] = ! empty( $_POST['live_output'] );
@@ -96,7 +96,7 @@ class Seosuite_Schema_Settings {
 			}
 		}
 
-		foreach ( Seosuite_Meta_Settings::public_post_types() as $pt ) {
+		foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) {
 			$key = 'pt_schema_' . $pt->name;
 			if ( isset( $_POST[ $key ] ) && array_key_exists( $_POST[ $key ], self::POST_TYPE_SCHEMA_TYPES ) ) {
 				$opts['post_types'][ $pt->name ] = sanitize_text_field( wp_unslash( $_POST[ $key ] ) );
@@ -105,7 +105,7 @@ class Seosuite_Schema_Settings {
 
 		update_option( self::OPTION, $opts );
 
-		wp_safe_redirect( add_query_arg( 'seosuite_saved', '1', wp_get_referer() ) );
+		wp_safe_redirect( add_query_arg( 'cmdroom_saved', '1', wp_get_referer() ) );
 		exit;
 	}
 
@@ -113,34 +113,34 @@ class Seosuite_Schema_Settings {
 		$opts = self::get_options();
 		$b    = $opts['business'];
 		?>
-		<div class="wrap seosuite-wrap">
-			<h1><?php esc_html_e( 'Datos estructurados', 'seo-suite' ); ?></h1>
+		<div class="wrap cmdroom-wrap">
+			<h1><?php esc_html_e( 'Datos estructurados', 'command-room' ); ?></h1>
 
-			<?php if ( isset( $_GET['seosuite_saved'] ) ) : ?>
-				<div class="notice notice-success"><p><?php esc_html_e( 'Ajustes guardados.', 'seo-suite' ); ?></p></div>
+			<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
+				<div class="notice notice-success"><p><?php esc_html_e( 'Ajustes guardados.', 'command-room' ); ?></p></div>
 			<?php endif; ?>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<?php wp_nonce_field( 'seosuite_save_schema_settings' ); ?>
-				<input type="hidden" name="action" value="seosuite_save_schema_settings" />
+				<?php wp_nonce_field( 'cmdroom_save_schema_settings' ); ?>
+				<input type="hidden" name="action" value="cmdroom_save_schema_settings" />
 
-				<h2><?php esc_html_e( 'General', 'seo-suite' ); ?></h2>
+				<h2><?php esc_html_e( 'General', 'command-room' ); ?></h2>
 				<table class="form-table">
 					<tr>
-						<th><?php esc_html_e( 'Salida en el sitio', 'seo-suite' ); ?></th>
+						<th><?php esc_html_e( 'Salida en el sitio', 'command-room' ); ?></th>
 						<td>
 							<label>
 								<input type="checkbox" name="live_output" value="1" <?php checked( $opts['live_output'] ); ?> />
-								<?php esc_html_e( 'Activar la impresión real del @graph JSON-LD (déjalo apagado mientras compares contra Rank Math + EEAT Author)', 'seo-suite' ); ?>
+								<?php esc_html_e( 'Activar la impresión real del @graph JSON-LD (déjalo apagado mientras compares contra Rank Math + EEAT Author)', 'command-room' ); ?>
 							</label>
 						</td>
 					</tr>
 				</table>
 
-				<h2><?php esc_html_e( 'Negocio / Organización (aparece en todas las páginas)', 'seo-suite' ); ?></h2>
+				<h2><?php esc_html_e( 'Negocio / Organización (aparece en todas las páginas)', 'command-room' ); ?></h2>
 				<table class="form-table">
 					<tr>
-						<th><label for="business_type"><?php esc_html_e( 'Tipo de schema', 'seo-suite' ); ?></label></th>
+						<th><label for="business_type"><?php esc_html_e( 'Tipo de schema', 'command-room' ); ?></label></th>
 						<td>
 							<select id="business_type" name="business_type">
 								<?php foreach ( self::BUSINESS_TYPES as $type => $label ) : ?>
@@ -149,23 +149,23 @@ class Seosuite_Schema_Settings {
 							</select>
 						</td>
 					</tr>
-					<tr><th><label for="business_name"><?php esc_html_e( 'Nombre', 'seo-suite' ); ?></label></th><td><input type="text" id="business_name" name="business_name" value="<?php echo esc_attr( $b['name'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_logo"><?php esc_html_e( 'URL del logo', 'seo-suite' ); ?></label></th><td><input type="text" id="business_logo" name="business_logo" value="<?php echo esc_attr( $b['logo'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_telephone"><?php esc_html_e( 'Teléfono', 'seo-suite' ); ?></label></th><td><input type="text" id="business_telephone" name="business_telephone" value="<?php echo esc_attr( $b['telephone'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_street"><?php esc_html_e( 'Dirección (calle)', 'seo-suite' ); ?></label></th><td><input type="text" id="business_street" name="business_street" value="<?php echo esc_attr( $b['street'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_locality"><?php esc_html_e( 'Localidad', 'seo-suite' ); ?></label></th><td><input type="text" id="business_locality" name="business_locality" value="<?php echo esc_attr( $b['locality'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_region"><?php esc_html_e( 'Provincia', 'seo-suite' ); ?></label></th><td><input type="text" id="business_region" name="business_region" value="<?php echo esc_attr( $b['region'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_postal"><?php esc_html_e( 'Código postal', 'seo-suite' ); ?></label></th><td><input type="text" id="business_postal" name="business_postal" value="<?php echo esc_attr( $b['postal'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_country"><?php esc_html_e( 'País (ISO 2 letras)', 'seo-suite' ); ?></label></th><td><input type="text" id="business_country" name="business_country" value="<?php echo esc_attr( $b['country'] ); ?>" class="small-text" maxlength="2" /></td></tr>
+					<tr><th><label for="business_name"><?php esc_html_e( 'Nombre', 'command-room' ); ?></label></th><td><input type="text" id="business_name" name="business_name" value="<?php echo esc_attr( $b['name'] ); ?>" class="regular-text" /></td></tr>
+					<tr><th><label for="business_logo"><?php esc_html_e( 'URL del logo', 'command-room' ); ?></label></th><td><input type="text" id="business_logo" name="business_logo" value="<?php echo esc_attr( $b['logo'] ); ?>" class="regular-text" /></td></tr>
+					<tr><th><label for="business_telephone"><?php esc_html_e( 'Teléfono', 'command-room' ); ?></label></th><td><input type="text" id="business_telephone" name="business_telephone" value="<?php echo esc_attr( $b['telephone'] ); ?>" class="regular-text" /></td></tr>
+					<tr><th><label for="business_street"><?php esc_html_e( 'Dirección (calle)', 'command-room' ); ?></label></th><td><input type="text" id="business_street" name="business_street" value="<?php echo esc_attr( $b['street'] ); ?>" class="regular-text" /></td></tr>
+					<tr><th><label for="business_locality"><?php esc_html_e( 'Localidad', 'command-room' ); ?></label></th><td><input type="text" id="business_locality" name="business_locality" value="<?php echo esc_attr( $b['locality'] ); ?>" class="regular-text" /></td></tr>
+					<tr><th><label for="business_region"><?php esc_html_e( 'Provincia', 'command-room' ); ?></label></th><td><input type="text" id="business_region" name="business_region" value="<?php echo esc_attr( $b['region'] ); ?>" class="regular-text" /></td></tr>
+					<tr><th><label for="business_postal"><?php esc_html_e( 'Código postal', 'command-room' ); ?></label></th><td><input type="text" id="business_postal" name="business_postal" value="<?php echo esc_attr( $b['postal'] ); ?>" class="regular-text" /></td></tr>
+					<tr><th><label for="business_country"><?php esc_html_e( 'País (ISO 2 letras)', 'command-room' ); ?></label></th><td><input type="text" id="business_country" name="business_country" value="<?php echo esc_attr( $b['country'] ); ?>" class="small-text" maxlength="2" /></td></tr>
 					<tr>
-						<th><label for="business_sameas"><?php esc_html_e( 'Perfiles sociales (sameAs)', 'seo-suite' ); ?></label></th>
-						<td><textarea id="business_sameas" name="business_sameas" class="large-text" rows="4" placeholder="<?php esc_attr_e( 'Una URL por línea', 'seo-suite' ); ?>"><?php echo esc_textarea( $b['sameas'] ); ?></textarea></td>
+						<th><label for="business_sameas"><?php esc_html_e( 'Perfiles sociales (sameAs)', 'command-room' ); ?></label></th>
+						<td><textarea id="business_sameas" name="business_sameas" class="large-text" rows="4" placeholder="<?php esc_attr_e( 'Una URL por línea', 'command-room' ); ?>"><?php echo esc_textarea( $b['sameas'] ); ?></textarea></td>
 					</tr>
 				</table>
 
-				<h2><?php esc_html_e( 'Tipo de schema por tipo de contenido', 'seo-suite' ); ?></h2>
+				<h2><?php esc_html_e( 'Tipo de schema por tipo de contenido', 'command-room' ); ?></h2>
 				<table class="form-table">
-					<?php foreach ( Seosuite_Meta_Settings::public_post_types() as $pt ) :
+					<?php foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) :
 						$current = $opts['post_types'][ $pt->name ] ?? '';
 						?>
 						<tr>
@@ -180,9 +180,9 @@ class Seosuite_Schema_Settings {
 						</tr>
 					<?php endforeach; ?>
 				</table>
-				<p class="description"><?php esc_html_e( 'Las categorías y etiquetas siempre usan CollectionPage — es lo que recomienda Google para archivos.', 'seo-suite' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Las categorías y etiquetas siempre usan CollectionPage — es lo que recomienda Google para archivos.', 'command-room' ); ?></p>
 
-				<?php submit_button( __( 'Guardar', 'seo-suite' ) ); ?>
+				<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
 			</form>
 		</div>
 		<?php

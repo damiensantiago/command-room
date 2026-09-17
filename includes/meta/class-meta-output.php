@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Apagado por defecto para poder convivir con Rank Math mientras se
  * verifica cada plantilla, sin duplicar metas en las páginas de dev.
  */
-class Seosuite_Meta_Output {
+class Cmdroom_Meta_Output {
 
 	public static function init() {
 		add_filter( 'pre_get_document_title', array( __CLASS__, 'filter_title' ), 20 );
@@ -17,7 +17,7 @@ class Seosuite_Meta_Output {
 	}
 
 	private static function is_active() {
-		return ! is_admin() && Seosuite_Meta_Settings::is_live_output_enabled();
+		return ! is_admin() && Cmdroom_Meta_Settings::is_live_output_enabled();
 	}
 
 	public static function filter_title( $title ) {
@@ -65,13 +65,13 @@ class Seosuite_Meta_Output {
 
 	private static function resolve_current() {
 		if ( is_singular() ) {
-			return Seosuite_Meta_Resolver::resolve_for_post( get_queried_object_id() );
+			return Cmdroom_Meta_Resolver::resolve_for_post( get_queried_object_id() );
 		}
 		if ( is_category() || is_tag() || is_tax() ) {
-			return Seosuite_Meta_Resolver::resolve_for_term( get_queried_object() );
+			return Cmdroom_Meta_Resolver::resolve_for_term( get_queried_object() );
 		}
 		if ( is_front_page() || is_home() ) {
-			return Seosuite_Meta_Resolver::resolve_for_home();
+			return Cmdroom_Meta_Resolver::resolve_for_home();
 		}
 		return null;
 	}

@@ -14,35 +14,35 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Gated por "Salida en el sitio": mientras esté apagado, estas URLs las
  * sigue sirviendo Rank Math sin ninguna interferencia.
  */
-class Seosuite_Sitemap_Rewrite {
+class Cmdroom_Sitemap_Rewrite {
 
 	public static function init() {
 		add_action( 'template_redirect', array( __CLASS__, 'maybe_serve' ), 0 );
 	}
 
 	public static function maybe_serve() {
-		if ( ! Seosuite_Sitemap_Settings::is_live_output_enabled() ) {
+		if ( ! Cmdroom_Sitemap_Settings::is_live_output_enabled() ) {
 			return;
 		}
 
 		$path = wp_parse_url( $_SERVER['REQUEST_URI'], PHP_URL_PATH );
 
 		if ( '/sitemap_index.xml' === untrailingslashit( $path ) ) {
-			self::output( Seosuite_Sitemap_Render::render_index() );
+			self::output( Cmdroom_Sitemap_Render::render_index() );
 		}
 
 		if ( preg_match( '#^/sitemap-([a-z0-9-]+)\.xml$#', untrailingslashit( $path ), $m ) ) {
-			$def = Seosuite_Sitemap_Settings::get_definition( $m[1] );
+			$def = Cmdroom_Sitemap_Settings::get_definition( $m[1] );
 			if ( ! $def ) {
 				return; // deja que WordPress siga su curso normal (404)
 			}
-			self::output( Seosuite_Sitemap_Render::render_definition( $def ) );
+			self::output( Cmdroom_Sitemap_Render::render_definition( $def ) );
 		}
 	}
 
 	private static function output( $xml ) {
 		header( 'Content-Type: application/xml; charset=UTF-8' );
-		echo $xml; // ya viene escapado como XML en Seosuite_Sitemap_Render
+		echo $xml; // ya viene escapado como XML en Cmdroom_Sitemap_Render
 		exit;
 	}
 }

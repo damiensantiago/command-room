@@ -8,14 +8,14 @@ if ( ! defined( 'ABSPATH' ) ) {
  * igual que el módulo de Metas, para convivir con Rank Math + EEAT Author
  * mientras se compara plantilla a plantilla.
  */
-class Seosuite_Schema_Output {
+class Cmdroom_Schema_Output {
 
 	public static function init() {
 		add_action( 'wp_footer', array( __CLASS__, 'print_schema' ) );
 	}
 
 	private static function is_active() {
-		return ! is_admin() && Seosuite_Schema_Settings::is_live_output_enabled();
+		return ! is_admin() && Cmdroom_Schema_Settings::is_live_output_enabled();
 	}
 
 	public static function print_schema() {
@@ -36,13 +36,13 @@ class Seosuite_Schema_Output {
 
 	public static function resolve_current() {
 		if ( is_singular() ) {
-			return Seosuite_Schema_Builder::build_for_post( get_queried_object_id() );
+			return Cmdroom_Schema_Builder::build_for_post( get_queried_object_id() );
 		}
 		if ( is_category() || is_tag() || is_tax() ) {
-			return Seosuite_Schema_Builder::build_for_term( get_queried_object() );
+			return Cmdroom_Schema_Builder::build_for_term( get_queried_object() );
 		}
 		if ( is_front_page() || is_home() ) {
-			return Seosuite_Schema_Builder::build_for_home();
+			return Cmdroom_Schema_Builder::build_for_home();
 		}
 		return null;
 	}

@@ -11,10 +11,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  * reutilizable ahí. Aquí se recalcula con el criterio estándar de
  * WordPress para que sirva igual en cualquier sitio.
  */
-class Seosuite_Breadcrumbs {
+class Cmdroom_Breadcrumbs {
 
 	public static function init() {
-		add_shortcode( 'seosuite_breadcrumbs', array( __CLASS__, 'shortcode' ) );
+		add_shortcode( 'cmdroom_breadcrumbs', array( __CLASS__, 'shortcode' ) );
 	}
 
 	public static function get_items_for_post( $post ) {
@@ -59,19 +59,19 @@ class Seosuite_Breadcrumbs {
 	}
 
 	public static function get_items_for_home() {
-		$opts = Seosuite_Breadcrumb_Settings::get_options();
+		$opts = Cmdroom_Breadcrumb_Settings::get_options();
 		return array( array( 'name' => $opts['home_label'], 'url' => home_url( '/' ) ) );
 	}
 
 	public static function get_items_for_search( $query ) {
-		$opts  = Seosuite_Breadcrumb_Settings::get_options();
+		$opts  = Cmdroom_Breadcrumb_Settings::get_options();
 		$items = self::maybe_home_item();
 		$items[] = array( 'name' => trim( $opts['search_prefix'] . ' "' . $query . '"' ), 'url' => '' );
 		return $items;
 	}
 
 	public static function get_items_for_404() {
-		$opts  = Seosuite_Breadcrumb_Settings::get_options();
+		$opts  = Cmdroom_Breadcrumb_Settings::get_options();
 		$items = self::maybe_home_item();
 		$items[] = array( 'name' => $opts['label_404'], 'url' => '' );
 		return $items;
@@ -102,7 +102,7 @@ class Seosuite_Breadcrumbs {
 	}
 
 	private static function maybe_home_item() {
-		$opts = Seosuite_Breadcrumb_Settings::get_options();
+		$opts = Cmdroom_Breadcrumb_Settings::get_options();
 		return $opts['show_home'] ? array( array( 'name' => $opts['home_label'], 'url' => home_url( '/' ) ) ) : array();
 	}
 
@@ -116,11 +116,11 @@ class Seosuite_Breadcrumbs {
 			return '';
 		}
 
-		$opts      = Seosuite_Breadcrumb_Settings::get_options();
+		$opts      = Cmdroom_Breadcrumb_Settings::get_options();
 		$last      = count( $items ) - 1;
-		$separator = '<span class="seosuite-crumb-sep" aria-hidden="true">' . esc_html( $opts['separator'] ) . '</span>';
+		$separator = '<span class="cmdroom-crumb-sep" aria-hidden="true">' . esc_html( $opts['separator'] ) . '</span>';
 
-		$html = '<nav class="seosuite-breadcrumbs" aria-label="' . esc_attr__( 'Migas de pan', 'seo-suite' ) . '">';
+		$html = '<nav class="cmdroom-breadcrumbs" aria-label="' . esc_attr__( 'Migas de pan', 'command-room' ) . '">';
 
 		foreach ( $items as $i => $item ) {
 			if ( $i > 0 ) {
@@ -130,7 +130,7 @@ class Seosuite_Breadcrumbs {
 			$is_current = ( $i === $last );
 
 			if ( $is_current && $opts['bold_last'] ) {
-				$html .= '<span class="seosuite-crumb-current" aria-current="page">' . esc_html( $item['name'] ) . '</span>';
+				$html .= '<span class="cmdroom-crumb-current" aria-current="page">' . esc_html( $item['name'] ) . '</span>';
 			} elseif ( empty( $item['url'] ) ) {
 				$html .= '<span>' . esc_html( $item['name'] ) . '</span>';
 			} else {
@@ -148,9 +148,9 @@ class Seosuite_Breadcrumbs {
  * Función de tema — la forma directa de imprimir las migas sin pasar por
  * el shortcode, para temas que quieran engancharla en su plantilla.
  */
-function seosuite_the_breadcrumbs() {
-	$items = Seosuite_Breadcrumbs::get_current_items();
+function cmdroom_the_breadcrumbs() {
+	$items = Cmdroom_Breadcrumbs::get_current_items();
 	if ( $items ) {
-		echo Seosuite_Breadcrumbs::render_html( $items ); // ya viene escapado en render_html()
+		echo Cmdroom_Breadcrumbs::render_html( $items ); // ya viene escapado en render_html()
 	}
 }

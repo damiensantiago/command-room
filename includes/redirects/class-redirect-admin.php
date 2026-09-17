@@ -10,12 +10,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  * visitarla. No es un WP_List_Table — se mantiene el mismo patrón simple
  * que ya usan los otros módulos, en vez de mezclar dos estilos de UI.
  */
-class Seosuite_Redirect_Admin {
+class Cmdroom_Redirect_Admin {
 
-	const OPTION = 'seosuite_redirect_options';
+	const OPTION = 'cmdroom_redirect_options';
 
 	public static function init() {
-		add_action( 'admin_post_seosuite_save_redirects', array( __CLASS__, 'handle_save' ) );
+		add_action( 'admin_post_cmdroom_save_redirects', array( __CLASS__, 'handle_save' ) );
 	}
 
 	public static function is_live_output_enabled() {
@@ -25,9 +25,9 @@ class Seosuite_Redirect_Admin {
 
 	public static function handle_save() {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'seo-suite' ) );
+			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'command-room' ) );
 		}
-		check_admin_referer( 'seosuite_save_redirects' );
+		check_admin_referer( 'cmdroom_save_redirects' );
 
 		update_option( self::OPTION, array( 'live_output' => ! empty( $_POST['live_output'] ) ) );
 
@@ -39,7 +39,7 @@ class Seosuite_Redirect_Admin {
 
 			if ( '' === $source ) {
 				if ( ! $is_new ) {
-					Seosuite_Redirect_Table::delete( (int) $key );
+					Cmdroom_Redirect_Table::delete( (int) $key );
 				}
 				continue;
 			}
@@ -57,13 +57,13 @@ class Seosuite_Redirect_Admin {
 			}
 
 			if ( $is_new ) {
-				Seosuite_Redirect_Table::insert( $data );
+				Cmdroom_Redirect_Table::insert( $data );
 			} else {
-				Seosuite_Redirect_Table::update( (int) $key, $data );
+				Cmdroom_Redirect_Table::update( (int) $key, $data );
 			}
 		}
 
-		wp_safe_redirect( add_query_arg( 'seosuite_saved', '1', wp_get_referer() ) );
+		wp_safe_redirect( add_query_arg( 'cmdroom_saved', '1', wp_get_referer() ) );
 		exit;
 	}
 
@@ -72,32 +72,32 @@ class Seosuite_Redirect_Admin {
 	}
 
 	public static function render_page() {
-		$redirects  = Seosuite_Redirect_Table::get_all();
+		$redirects  = Cmdroom_Redirect_Table::get_all();
 		$live       = self::is_live_output_enabled();
 		$blank_rows = 5;
 		?>
-		<div class="wrap seosuite-wrap">
-			<h1><?php esc_html_e( 'Redirecciones', 'seo-suite' ); ?></h1>
+		<div class="wrap cmdroom-wrap">
+			<h1><?php esc_html_e( 'Redirecciones', 'command-room' ); ?></h1>
 
-			<?php if ( isset( $_GET['seosuite_saved'] ) ) : ?>
-				<div class="notice notice-success"><p><?php esc_html_e( 'Guardado.', 'seo-suite' ); ?></p></div>
+			<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
+				<div class="notice notice-success"><p><?php esc_html_e( 'Guardado.', 'command-room' ); ?></p></div>
 			<?php endif; ?>
 
 			<p class="description">
-				<?php esc_html_e( 'Motor interno de WordPress (template_redirect) — nunca se escribe en .htaccess. Solo aplica de verdad si "Salida en el sitio" está activada.', 'seo-suite' ); ?>
+				<?php esc_html_e( 'Motor interno de WordPress (template_redirect) — nunca se escribe en .htaccess. Solo aplica de verdad si "Salida en el sitio" está activada.', 'command-room' ); ?>
 			</p>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<?php wp_nonce_field( 'seosuite_save_redirects' ); ?>
-				<input type="hidden" name="action" value="seosuite_save_redirects" />
+				<?php wp_nonce_field( 'cmdroom_save_redirects' ); ?>
+				<input type="hidden" name="action" value="cmdroom_save_redirects" />
 
 				<table class="form-table">
 					<tr>
-						<th><?php esc_html_e( 'Salida en el sitio', 'seo-suite' ); ?></th>
+						<th><?php esc_html_e( 'Salida en el sitio', 'command-room' ); ?></th>
 						<td>
 							<label>
 								<input type="checkbox" name="live_output" value="1" <?php checked( $live ); ?> />
-								<?php esc_html_e( 'Aplicar estas redirecciones de verdad (déjalo apagado mientras compares contra el gestor de Rank Math)', 'seo-suite' ); ?>
+								<?php esc_html_e( 'Aplicar estas redirecciones de verdad (déjalo apagado mientras compares contra el gestor de Rank Math)', 'command-room' ); ?>
 							</label>
 						</td>
 					</tr>
@@ -106,12 +106,12 @@ class Seosuite_Redirect_Admin {
 				<table class="widefat">
 					<thead>
 						<tr>
-							<th><?php esc_html_e( 'Activa', 'seo-suite' ); ?></th>
-							<th><?php esc_html_e( 'Origen (sin barras)', 'seo-suite' ); ?></th>
-							<th><?php esc_html_e( 'Tipo origen', 'seo-suite' ); ?></th>
-							<th><?php esc_html_e( 'Destino', 'seo-suite' ); ?></th>
-							<th><?php esc_html_e( 'HTTP', 'seo-suite' ); ?></th>
-							<th><?php esc_html_e( 'Visitas', 'seo-suite' ); ?></th>
+							<th><?php esc_html_e( 'Activa', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Origen (sin barras)', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Tipo origen', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Destino', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'HTTP', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Visitas', 'command-room' ); ?></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -121,8 +121,8 @@ class Seosuite_Redirect_Admin {
 								<td><input type="text" name="redirects[<?php echo (int) $r['id']; ?>][source]" value="<?php echo esc_attr( $r['source'] ); ?>" /></td>
 								<td>
 									<select name="redirects[<?php echo (int) $r['id']; ?>][source_type]">
-										<option value="exact" <?php selected( $r['source_type'], 'exact' ); ?>><?php esc_html_e( 'Exacto', 'seo-suite' ); ?></option>
-										<option value="regex" <?php selected( $r['source_type'], 'regex' ); ?>><?php esc_html_e( 'Regex', 'seo-suite' ); ?></option>
+										<option value="exact" <?php selected( $r['source_type'], 'exact' ); ?>><?php esc_html_e( 'Exacto', 'command-room' ); ?></option>
+										<option value="regex" <?php selected( $r['source_type'], 'regex' ); ?>><?php esc_html_e( 'Regex', 'command-room' ); ?></option>
 									</select>
 								</td>
 								<td><input type="text" name="redirects[<?php echo (int) $r['id']; ?>][destination]" value="<?php echo esc_attr( $r['destination'] ); ?>" class="regular-text" /></td>
@@ -142,8 +142,8 @@ class Seosuite_Redirect_Admin {
 								<td><input type="text" name="redirects[new_<?php echo (int) $i; ?>][source]" placeholder="ecografia" /></td>
 								<td>
 									<select name="redirects[new_<?php echo (int) $i; ?>][source_type]">
-										<option value="exact"><?php esc_html_e( 'Exacto', 'seo-suite' ); ?></option>
-										<option value="regex"><?php esc_html_e( 'Regex', 'seo-suite' ); ?></option>
+										<option value="exact"><?php esc_html_e( 'Exacto', 'command-room' ); ?></option>
+										<option value="regex"><?php esc_html_e( 'Regex', 'command-room' ); ?></option>
 									</select>
 								</td>
 								<td><input type="text" name="redirects[new_<?php echo (int) $i; ?>][destination]" placeholder="https://..." class="regular-text" /></td>
@@ -159,25 +159,25 @@ class Seosuite_Redirect_Admin {
 						<?php endfor; ?>
 					</tbody>
 				</table>
-				<p class="description"><?php esc_html_e( 'Deja el origen en blanco para borrar una fila existente.', 'seo-suite' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Deja el origen en blanco para borrar una fila existente.', 'command-room' ); ?></p>
 
-				<?php submit_button( __( 'Guardar', 'seo-suite' ) ); ?>
+				<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
 			</form>
 
 			<hr />
 
-			<h2><?php esc_html_e( 'Probar una ruta', 'seo-suite' ); ?></h2>
+			<h2><?php esc_html_e( 'Probar una ruta', 'command-room' ); ?></h2>
 			<form method="get">
-				<input type="hidden" name="page" value="seosuite-redirects" />
-				<label for="seosuite_test_path"><?php esc_html_e( 'Ruta (sin dominio)', 'seo-suite' ); ?></label>
-				<input type="text" id="seosuite_test_path" name="seosuite_test_path" value="<?php echo isset( $_GET['seosuite_test_path'] ) ? esc_attr( wp_unslash( $_GET['seosuite_test_path'] ) ) : ''; ?>" placeholder="ecografia" />
-				<?php submit_button( __( 'Probar', 'seo-suite' ), 'secondary', '', false ); ?>
+				<input type="hidden" name="page" value="cmdroom-redirects" />
+				<label for="cmdroom_test_path"><?php esc_html_e( 'Ruta (sin dominio)', 'command-room' ); ?></label>
+				<input type="text" id="cmdroom_test_path" name="cmdroom_test_path" value="<?php echo isset( $_GET['cmdroom_test_path'] ) ? esc_attr( wp_unslash( $_GET['cmdroom_test_path'] ) ) : ''; ?>" placeholder="ecografia" />
+				<?php submit_button( __( 'Probar', 'command-room' ), 'secondary', '', false ); ?>
 			</form>
-			<?php if ( ! empty( $_GET['seosuite_test_path'] ) ) :
-				$path  = trim( sanitize_text_field( wp_unslash( $_GET['seosuite_test_path'] ) ), '/' );
-				$match = Seosuite_Redirect_Table::get_by_source( $path );
+			<?php if ( ! empty( $_GET['cmdroom_test_path'] ) ) :
+				$path  = trim( sanitize_text_field( wp_unslash( $_GET['cmdroom_test_path'] ) ), '/' );
+				$match = Cmdroom_Redirect_Table::get_by_source( $path );
 				if ( ! $match ) {
-					foreach ( Seosuite_Redirect_Table::get_active_regex_rules() as $rule ) {
+					foreach ( Cmdroom_Redirect_Table::get_active_regex_rules() as $rule ) {
 						if ( @preg_match( '#' . $rule['source'] . '#i', $path ) ) {
 							$match = $rule;
 							break;
@@ -190,14 +190,14 @@ class Seosuite_Redirect_Admin {
 						<?php
 						printf(
 							/* translators: 1: HTTP code, 2: destination URL */
-							esc_html__( '%1$d → %2$s', 'seo-suite' ),
+							esc_html__( '%1$d → %2$s', 'command-room' ),
 							(int) $match['redirect_type'],
 							esc_html( $match['destination'] )
 						);
 						?>
 					</p>
 				<?php else : ?>
-					<p><?php esc_html_e( 'Sin coincidencia: esa ruta no redirige a ningún sitio.', 'seo-suite' ); ?></p>
+					<p><?php esc_html_e( 'Sin coincidencia: esa ruta no redirige a ningún sitio.', 'command-room' ); ?></p>
 				<?php endif; ?>
 			<?php endif; ?>
 		</div>

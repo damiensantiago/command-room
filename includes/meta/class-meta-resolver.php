@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * decide esto — lo usan tanto la salida real en wp_head como la vista previa
  * de Herramientas, para que nunca diverjan.
  */
-class Seosuite_Meta_Resolver {
+class Cmdroom_Meta_Resolver {
 
 	public static function resolve_for_post( $post ) {
 		$post = get_post( $post );
@@ -18,20 +18,20 @@ class Seosuite_Meta_Resolver {
 			return null;
 		}
 
-		$override_title = get_post_meta( $post->ID, '_seosuite_title', true );
-		$override_desc  = get_post_meta( $post->ID, '_seosuite_description', true );
-		$canonical      = get_post_meta( $post->ID, '_seosuite_canonical', true );
-		$noindex        = (bool) get_post_meta( $post->ID, '_seosuite_noindex', true );
-		$nofollow       = (bool) get_post_meta( $post->ID, '_seosuite_nofollow', true );
+		$override_title = get_post_meta( $post->ID, '_cmdroom_title', true );
+		$override_desc  = get_post_meta( $post->ID, '_cmdroom_description', true );
+		$canonical      = get_post_meta( $post->ID, '_cmdroom_canonical', true );
+		$noindex        = (bool) get_post_meta( $post->ID, '_cmdroom_noindex', true );
+		$nofollow       = (bool) get_post_meta( $post->ID, '_cmdroom_nofollow', true );
 
-		$template = Seosuite_Meta_Settings::get_post_type_template( $post->post_type );
+		$template = Cmdroom_Meta_Settings::get_post_type_template( $post->post_type );
 		$context  = array( 'post' => $post );
 
 		// Los overrides también pasan por el motor de variables: algunos títulos
 		// importados de Rank Math guardan %sep%/%sitename% sin resolver, y un
 		// override manual puede querer usar variables igualmente.
-		$title = Seosuite_Meta_Variables::replace( $override_title ? $override_title : $template['title'], $context );
-		$desc  = Seosuite_Meta_Variables::replace( $override_desc ? $override_desc : $template['description'], $context );
+		$title = Cmdroom_Meta_Variables::replace( $override_title ? $override_title : $template['title'], $context );
+		$desc  = Cmdroom_Meta_Variables::replace( $override_desc ? $override_desc : $template['description'], $context );
 
 		if ( ! $canonical ) {
 			$canonical = get_permalink( $post );
@@ -57,11 +57,11 @@ class Seosuite_Meta_Resolver {
 			return null;
 		}
 
-		$template = Seosuite_Meta_Settings::get_taxonomy_template( $term->taxonomy );
+		$template = Cmdroom_Meta_Settings::get_taxonomy_template( $term->taxonomy );
 		$context  = array( 'term' => $term );
 
-		$title = Seosuite_Meta_Variables::replace( $template['title'], $context );
-		$desc  = Seosuite_Meta_Variables::replace( $template['description'], $context );
+		$title = Cmdroom_Meta_Variables::replace( $template['title'], $context );
+		$desc  = Cmdroom_Meta_Variables::replace( $template['description'], $context );
 
 		return array(
 			'title'       => $title,
@@ -77,11 +77,11 @@ class Seosuite_Meta_Resolver {
 	}
 
 	public static function resolve_for_home() {
-		$template = Seosuite_Meta_Settings::get_home_template();
+		$template = Cmdroom_Meta_Settings::get_home_template();
 		$context  = array( 'is_home' => true );
 
-		$title = Seosuite_Meta_Variables::replace( $template['title'], $context );
-		$desc  = Seosuite_Meta_Variables::replace( $template['description'], $context );
+		$title = Cmdroom_Meta_Variables::replace( $template['title'], $context );
+		$desc  = Cmdroom_Meta_Variables::replace( $template['description'], $context );
 
 		return array(
 			'title'       => $title,

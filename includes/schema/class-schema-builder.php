@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * repetir el error de @type incorrecto dentro de @graph que se documentó en
  * la auditoría SEO de Dripbase.
  */
-class Seosuite_Schema_Builder {
+class Cmdroom_Schema_Builder {
 
 	public static function build_for_post( $post ) {
 		$post = get_post( $post );
@@ -17,17 +17,17 @@ class Seosuite_Schema_Builder {
 			return null;
 		}
 
-		$type = Seosuite_Schema_Settings::get_post_type_schema( $post->post_type );
+		$type = Cmdroom_Schema_Settings::get_post_type_schema( $post->post_type );
 		if ( '' === $type ) {
 			return null;
 		}
 
-		$meta = Seosuite_Meta_Resolver::resolve_for_post( $post );
+		$meta = Cmdroom_Meta_Resolver::resolve_for_post( $post );
 
 		$graph = array(
 			self::organization_node(),
 			self::website_node(),
-			self::breadcrumb_node( Seosuite_Breadcrumbs::get_items_for_post( $post ) ),
+			self::breadcrumb_node( Cmdroom_Breadcrumbs::get_items_for_post( $post ) ),
 		);
 
 		// headline usa el título real del post, no el título SEO con %sep%
@@ -72,13 +72,13 @@ class Seosuite_Schema_Builder {
 			return null;
 		}
 
-		$meta = Seosuite_Meta_Resolver::resolve_for_term( $term );
+		$meta = Cmdroom_Meta_Resolver::resolve_for_term( $term );
 		$url  = get_term_link( $term );
 
 		$graph = array(
 			self::organization_node(),
 			self::website_node(),
-			self::breadcrumb_node( Seosuite_Breadcrumbs::get_items_for_term( $term ) ),
+			self::breadcrumb_node( Cmdroom_Breadcrumbs::get_items_for_term( $term ) ),
 			array_filter( array(
 				'@type'       => 'CollectionPage',
 				'@id'         => $url . '#collectionpage',
@@ -97,7 +97,7 @@ class Seosuite_Schema_Builder {
 		$graph = array(
 			self::organization_node(),
 			self::website_node(),
-			self::breadcrumb_node( Seosuite_Breadcrumbs::get_items_for_home() ),
+			self::breadcrumb_node( Cmdroom_Breadcrumbs::get_items_for_home() ),
 		);
 
 		return array( '@context' => 'https://schema.org', '@graph' => $graph );
@@ -108,7 +108,7 @@ class Seosuite_Schema_Builder {
 	}
 
 	private static function organization_node() {
-		$b = Seosuite_Schema_Settings::get_business();
+		$b = Cmdroom_Schema_Settings::get_business();
 
 		$node = array(
 			'@type' => $b['type'],

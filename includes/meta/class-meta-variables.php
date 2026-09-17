@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * (%title%, %sep%, %sitename%, %excerpt%, %currentyear%, %category%...)
  * para que importar sus plantillas no requiera traducir nada.
  */
-class Seosuite_Meta_Variables {
+class Cmdroom_Meta_Variables {
 
 	public static function replace( $template, $context = array() ) {
 		$template = (string) $template;
@@ -41,7 +41,7 @@ class Seosuite_Meta_Variables {
 		$vars = array(
 			'sitename'    => get_bloginfo( 'name' ),
 			'sitedesc'    => get_bloginfo( 'description' ),
-			'sep'         => Seosuite_Meta_Settings::get_separator(),
+			'sep'         => Cmdroom_Meta_Settings::get_separator(),
 			'currentyear' => date_i18n( 'Y' ),
 			'page'        => self::current_page_suffix(),
 		);
@@ -96,7 +96,7 @@ class Seosuite_Meta_Variables {
 			return '';
 		}
 		/* translators: %d: número de página */
-		return sprintf( __( 'Página %d', 'seo-suite' ), $paged );
+		return sprintf( __( 'Página %d', 'command-room' ), $paged );
 	}
 
 	/**
@@ -106,21 +106,21 @@ class Seosuite_Meta_Variables {
 	 */
 	public static function catalog() {
 		return array(
-			array( 'tag' => '%title%', 'label' => __( 'Título', 'seo-suite' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Título del post, nombre del término, o nombre del sitio en portada.', 'seo-suite' ) ),
-			array( 'tag' => '%sitename%', 'label' => __( 'Nombre del sitio', 'seo-suite' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Ajustes → General → Título del sitio.', 'seo-suite' ) ),
-			array( 'tag' => '%sitedesc%', 'label' => __( 'Descripción del sitio', 'seo-suite' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Ajustes → General → Eslogan.', 'seo-suite' ) ),
-			array( 'tag' => '%sep%', 'label' => __( 'Separador', 'seo-suite' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'El carácter configurado en Metas → General (por defecto "-").', 'seo-suite' ) ),
-			array( 'tag' => '%excerpt%', 'label' => __( 'Extracto', 'seo-suite' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'El extracto manual del post si existe, si no las primeras ~30 palabras del contenido. En un término, las primeras palabras de su descripción.', 'seo-suite' ) ),
-			array( 'tag' => '%excerpt_only%', 'label' => __( 'Extracto (alias)', 'seo-suite' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'Igual que %excerpt% — alias por compatibilidad con plantillas importadas de Rank Math.', 'seo-suite' ) ),
-			array( 'tag' => '%category%', 'label' => __( 'Categoría', 'seo-suite' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'En un post, el nombre de su categoría principal. En un término, su propio nombre.', 'seo-suite' ) ),
-			array( 'tag' => '%author_name%', 'label' => __( 'Autor', 'seo-suite' ), 'contexts' => array( 'post' ), 'description' => __( 'Nombre visible del autor del post.', 'seo-suite' ) ),
-			array( 'tag' => '%author%', 'label' => __( 'Autor (alias)', 'seo-suite' ), 'contexts' => array( 'post' ), 'description' => __( 'Igual que %author_name% — es el nombre de variable que usa Rank Math.', 'seo-suite' ) ),
-			array( 'tag' => '%date%', 'label' => __( 'Fecha de publicación', 'seo-suite' ), 'contexts' => array( 'post' ), 'description' => __( 'Fecha del post con el formato de Ajustes → General.', 'seo-suite' ) ),
-			array( 'tag' => '%currentyear%', 'label' => __( 'Año actual', 'seo-suite' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'El año en curso — útil para "Copyright %currentyear%" o campañas con año.', 'seo-suite' ) ),
-			array( 'tag' => '%page%', 'label' => __( 'Página de paginación', 'seo-suite' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Se resuelve a "Página N" cuando la URL está paginada (page/2/, etc.); vacío en la primera página.', 'seo-suite' ) ),
-			array( 'tag' => '%term_title%', 'label' => __( 'Nombre del término', 'seo-suite' ), 'contexts' => array( 'term' ), 'description' => __( 'El nombre de la categoría/etiqueta/término actual.', 'seo-suite' ) ),
-			array( 'tag' => '%term%', 'label' => __( 'Nombre del término (alias)', 'seo-suite' ), 'contexts' => array( 'term' ), 'description' => __( 'Igual que %term_title% — es el nombre de variable que usa Rank Math.', 'seo-suite' ) ),
-			array( 'tag' => '%term_description%', 'label' => __( 'Descripción del término', 'seo-suite' ), 'contexts' => array( 'term' ), 'description' => __( 'El texto de descripción que se ha escrito para la categoría/etiqueta.', 'seo-suite' ) ),
+			array( 'tag' => '%title%', 'label' => __( 'Título', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Título del post, nombre del término, o nombre del sitio en portada.', 'command-room' ) ),
+			array( 'tag' => '%sitename%', 'label' => __( 'Nombre del sitio', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Ajustes → General → Título del sitio.', 'command-room' ) ),
+			array( 'tag' => '%sitedesc%', 'label' => __( 'Descripción del sitio', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Ajustes → General → Eslogan.', 'command-room' ) ),
+			array( 'tag' => '%sep%', 'label' => __( 'Separador', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'El carácter configurado en Metas → General (por defecto "-").', 'command-room' ) ),
+			array( 'tag' => '%excerpt%', 'label' => __( 'Extracto', 'command-room' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'El extracto manual del post si existe, si no las primeras ~30 palabras del contenido. En un término, las primeras palabras de su descripción.', 'command-room' ) ),
+			array( 'tag' => '%excerpt_only%', 'label' => __( 'Extracto (alias)', 'command-room' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'Igual que %excerpt% — alias por compatibilidad con plantillas importadas de Rank Math.', 'command-room' ) ),
+			array( 'tag' => '%category%', 'label' => __( 'Categoría', 'command-room' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'En un post, el nombre de su categoría principal. En un término, su propio nombre.', 'command-room' ) ),
+			array( 'tag' => '%author_name%', 'label' => __( 'Autor', 'command-room' ), 'contexts' => array( 'post' ), 'description' => __( 'Nombre visible del autor del post.', 'command-room' ) ),
+			array( 'tag' => '%author%', 'label' => __( 'Autor (alias)', 'command-room' ), 'contexts' => array( 'post' ), 'description' => __( 'Igual que %author_name% — es el nombre de variable que usa Rank Math.', 'command-room' ) ),
+			array( 'tag' => '%date%', 'label' => __( 'Fecha de publicación', 'command-room' ), 'contexts' => array( 'post' ), 'description' => __( 'Fecha del post con el formato de Ajustes → General.', 'command-room' ) ),
+			array( 'tag' => '%currentyear%', 'label' => __( 'Año actual', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'El año en curso — útil para "Copyright %currentyear%" o campañas con año.', 'command-room' ) ),
+			array( 'tag' => '%page%', 'label' => __( 'Página de paginación', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Se resuelve a "Página N" cuando la URL está paginada (page/2/, etc.); vacío en la primera página.', 'command-room' ) ),
+			array( 'tag' => '%term_title%', 'label' => __( 'Nombre del término', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'El nombre de la categoría/etiqueta/término actual.', 'command-room' ) ),
+			array( 'tag' => '%term%', 'label' => __( 'Nombre del término (alias)', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'Igual que %term_title% — es el nombre de variable que usa Rank Math.', 'command-room' ) ),
+			array( 'tag' => '%term_description%', 'label' => __( 'Descripción del término', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'El texto de descripción que se ha escrito para la categoría/etiqueta.', 'command-room' ) ),
 		);
 	}
 }

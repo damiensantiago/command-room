@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * está activo desde la Fase 0 y ese hook no vuelve a disparar solo por
  * subir código nuevo.
  */
-class Seosuite_Redirect_Table {
+class Cmdroom_Redirect_Table {
 
 	const DB_VERSION = '1.0';
 
@@ -19,11 +19,11 @@ class Seosuite_Redirect_Table {
 
 	public static function table_name() {
 		global $wpdb;
-		return $wpdb->prefix . 'seosuite_redirects';
+		return $wpdb->prefix . 'cmdroom_redirects';
 	}
 
 	public static function maybe_create_table() {
-		if ( get_option( 'seosuite_redirect_db_version' ) === self::DB_VERSION ) {
+		if ( get_option( 'cmdroom_redirect_db_version' ) === self::DB_VERSION ) {
 			return;
 		}
 
@@ -50,7 +50,7 @@ class Seosuite_Redirect_Table {
 
 		dbDelta( $sql );
 
-		update_option( 'seosuite_redirect_db_version', self::DB_VERSION );
+		update_option( 'cmdroom_redirect_db_version', self::DB_VERSION );
 	}
 
 	public static function get_all() {

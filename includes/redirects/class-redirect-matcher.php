@@ -8,14 +8,14 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Gated por "Salida en el sitio" para no chocar con el gestor de
  * redirecciones de Rank Math mientras conviven.
  */
-class Seosuite_Redirect_Matcher {
+class Cmdroom_Redirect_Matcher {
 
 	public static function init() {
 		add_action( 'template_redirect', array( __CLASS__, 'maybe_redirect' ), 0 );
 	}
 
 	public static function maybe_redirect() {
-		if ( ! Seosuite_Redirect_Admin::is_live_output_enabled() ) {
+		if ( ! Cmdroom_Redirect_Admin::is_live_output_enabled() ) {
 			return;
 		}
 
@@ -24,10 +24,10 @@ class Seosuite_Redirect_Matcher {
 			return;
 		}
 
-		$row = Seosuite_Redirect_Table::get_by_source( $path );
+		$row = Cmdroom_Redirect_Table::get_by_source( $path );
 
 		if ( ! $row ) {
-			foreach ( Seosuite_Redirect_Table::get_active_regex_rules() as $rule ) {
+			foreach ( Cmdroom_Redirect_Table::get_active_regex_rules() as $rule ) {
 				if ( @preg_match( '#' . $rule['source'] . '#i', $path ) ) {
 					$row = $rule;
 					break;
@@ -39,7 +39,7 @@ class Seosuite_Redirect_Matcher {
 			return;
 		}
 
-		Seosuite_Redirect_Table::increment_hits( $row['id'] );
+		Cmdroom_Redirect_Table::increment_hits( $row['id'] );
 		wp_redirect( $row['destination'], (int) $row['redirect_type'] );
 		exit;
 	}

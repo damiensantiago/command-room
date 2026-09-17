@@ -4,18 +4,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Importa la configuración de metas de Rank Math a seo-suite:
- * - Plantillas globales (rank-math-options-titles) → seosuite_meta_options
- * - Meta por post (rank_math_title/description/canonical_url/robots) → _seosuite_*
+ * Importa la configuración de metas de Rank Math a command-room:
+ * - Plantillas globales (rank-math-options-titles) → cmdroom_meta_options
+ * - Meta por post (rank_math_title/description/canonical_url/robots) → _cmdroom_*
  *
  * No toca ni borra nada de Rank Math. Solo lee y copia. Es idempotente:
- * un post que ya tiene _seosuite_title puesto a mano no se sobrescribe.
+ * un post que ya tiene _cmdroom_title puesto a mano no se sobrescribe.
  */
-class Seosuite_Rankmath_Importer {
+class Cmdroom_Rankmath_Importer {
 
 	public static function init() {
-		add_action( 'admin_post_seosuite_import_rankmath', array( __CLASS__, 'handle_import' ) );
-		add_action( 'admin_post_seosuite_import_rankmath_redirects', array( __CLASS__, 'handle_import_redirects' ) );
+		add_action( 'admin_post_cmdroom_import_rankmath', array( __CLASS__, 'handle_import' ) );
+		add_action( 'admin_post_cmdroom_import_rankmath_redirects', array( __CLASS__, 'handle_import_redirects' ) );
 	}
 
 	public static function is_rankmath_active() {
@@ -26,19 +26,19 @@ class Seosuite_Rankmath_Importer {
 
 	public static function handle_import() {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'seo-suite' ) );
+			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'command-room' ) );
 		}
-		check_admin_referer( 'seosuite_import_rankmath' );
+		check_admin_referer( 'cmdroom_import_rankmath' );
 
 		$templates_result = self::import_templates();
 		$posts_result      = self::import_post_meta();
 
-		set_transient( 'seosuite_import_report', array(
+		set_transient( 'cmdroom_import_report', array(
 			'templates' => $templates_result,
 			'posts'     => $posts_result,
 		), 60 );
 
-		wp_safe_redirect( add_query_arg( 'seosuite_imported', '1', wp_get_referer() ) );
+		wp_safe_redirect( add_query_arg( 'cmdroom_imported', '1', wp_get_referer() ) );
 		exit;
 	}
 
@@ -48,10 +48,10 @@ class Seosuite_Rankmath_Importer {
 			return array( 'imported' => false, 'reason' => 'No se encontró rank-math-options-titles.' );
 		}
 
-		$opts = Seosuite_Meta_Settings::get_options();
+		$opts = Cmdroom_Meta_Settings::get_options();
 		$touched = array();
 
-		foreach ( Seosuite_Meta_Settings::public_post_types() as $pt ) {
+		foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) {
 			$title_key = "pt_{$pt->name}_title";
 			$desc_key  = "pt_{$pt->name}_description";
 			if ( ! empty( $rm[ $title_key ] ) ) {
@@ -64,7 +64,7 @@ class Seosuite_Rankmath_Importer {
 			}
 		}
 
-		foreach ( Seosuite_Meta_Settings::public_taxonomies() as $tax ) {
+		foreach ( Cmdroom_Meta_Settings::public_taxonomies() as $tax ) {
 			$title_key = "tax_{$tax->name}_title";
 			$desc_key  = "tax_{$tax->name}_description";
 			if ( ! empty( $rm[ $title_key ] ) ) {
@@ -86,13 +86,13 @@ class Seosuite_Rankmath_Importer {
 			$touched[] = 'home (descripción)';
 		}
 
-		update_option( Seosuite_Meta_Settings::OPTION, $opts );
+		update_option( Cmdroom_Meta_Settings::OPTION, $opts );
 
 		return array( 'imported' => true, 'campos' => $touched );
 	}
 
 	private static function import_post_meta() {
-		$post_types = wp_list_pluck( Seosuite_Meta_Settings::public_post_types(), 'name' );
+		$post_types = wp_list_pluck( Cmdroom_Meta_Settings::public_post_types(), 'name' );
 
 		$query = new WP_Query( array(
 			'post_type'      => $post_types,
@@ -110,8 +110,8 @@ class Seosuite_Rankmath_Importer {
 		$skipped  = 0;
 
 		foreach ( $query->posts as $post_id ) {
-			$already_has_override = get_post_meta( $post_id, '_seosuite_title', true )
-				|| get_post_meta( $post_id, '_seosuite_description', true );
+			$already_has_override = get_post_meta( $post_id, '_cmdroom_title', true )
+				|| get_post_meta( $post_id, '_cmdroom_description', true );
 
 			if ( $already_has_override ) {
 				$skipped++;
@@ -124,18 +124,18 @@ class Seosuite_Rankmath_Importer {
 			$rm_robots = get_post_meta( $post_id, 'rank_math_robots', true );
 
 			if ( $rm_title ) {
-				update_post_meta( $post_id, '_seosuite_title', $rm_title );
+				update_post_meta( $post_id, '_cmdroom_title', $rm_title );
 			}
 			if ( $rm_desc ) {
-				update_post_meta( $post_id, '_seosuite_description', $rm_desc );
+				update_post_meta( $post_id, '_cmdroom_description', $rm_desc );
 			}
 			if ( $rm_canon ) {
-				update_post_meta( $post_id, '_seosuite_canonical', $rm_canon );
+				update_post_meta( $post_id, '_cmdroom_canonical', $rm_canon );
 			}
 
 			$robots = is_array( $rm_robots ) ? $rm_robots : array();
-			update_post_meta( $post_id, '_seosuite_noindex', in_array( 'noindex', $robots, true ) ? 1 : 0 );
-			update_post_meta( $post_id, '_seosuite_nofollow', in_array( 'nofollow', $robots, true ) ? 1 : 0 );
+			update_post_meta( $post_id, '_cmdroom_noindex', in_array( 'noindex', $robots, true ) ? 1 : 0 );
+			update_post_meta( $post_id, '_cmdroom_nofollow', in_array( 'nofollow', $robots, true ) ? 1 : 0 );
 
 			$imported++;
 		}
@@ -145,14 +145,14 @@ class Seosuite_Rankmath_Importer {
 
 	public static function handle_import_redirects() {
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'seo-suite' ) );
+			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'command-room' ) );
 		}
-		check_admin_referer( 'seosuite_import_rankmath_redirects' );
+		check_admin_referer( 'cmdroom_import_rankmath_redirects' );
 
 		$result = self::import_redirects();
-		set_transient( 'seosuite_import_redirects_report', $result, 60 );
+		set_transient( 'cmdroom_import_redirects_report', $result, 60 );
 
-		wp_safe_redirect( add_query_arg( 'seosuite_imported_redirects', '1', wp_get_referer() ) );
+		wp_safe_redirect( add_query_arg( 'cmdroom_imported_redirects', '1', wp_get_referer() ) );
 		exit;
 	}
 
@@ -197,7 +197,7 @@ class Seosuite_Rankmath_Importer {
 					continue;
 				}
 
-				Seosuite_Redirect_Table::insert( array(
+				Cmdroom_Redirect_Table::insert( array(
 					'source'        => $pattern,
 					'source_type'   => $comparison,
 					'destination'   => esc_url_raw( $row['url_to'] ),
