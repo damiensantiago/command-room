@@ -28,8 +28,23 @@ class Cmdroom_Sitemap_Settings {
 
 	public static function get_enabled_definitions() {
 		$opts = self::get_options();
-		return array_filter( $opts['definitions'], function ( $def ) {
-			return ! empty( $def['enabled'] ) && ! empty( $def['slug'] );
+		return array_filter( $opts['definitions'], function ( $def ) use ( $opts ) {
+			if ( empty( $def['enabled'] ) || empty( $def['slug'] ) ) {
+				return false;
+			}
+			// Filtro global de post types/taxonomías: aunque una definición
+			// esté activa, si su tipo de contenido/taxonomía está excluido
+			// globalmente no participa en el índice.
+			if ( 'terms' === ( $def['source'] ?? 'posts' ) ) {
+				if ( ! empty( $def['taxonomy'] ) && isset( $opts['taxonomies_enabled'][ $def['taxonomy'] ] ) && ! $opts['taxonomies_enabled'][ $def['taxonomy'] ] ) {
+					return false;
+				}
+			} else {
+				if ( ! empty( $def['post_type'] ) && isset( $opts['post_types_enabled'][ $def['post_type'] ] ) && ! $opts['post_types_enabled'][ $def['post_type'] ] ) {
+					return false;
+				}
+			}
+			return true;
 		} );
 	}
 
@@ -43,10 +58,22 @@ class Cmdroom_Sitemap_Settings {
 	}
 
 	private static function defaults() {
+		$post_types_enabled = array();
+		foreach ( self::public_post_types_for_toggle() as $pt ) {
+			$post_types_enabled[ $pt->name ] = true;
+		}
+
+		$taxonomies_enabled = array();
+		foreach ( Cmdroom_Meta_Settings::public_taxonomies() as $tax ) {
+			$taxonomies_enabled[ $tax->name ] = true;
+		}
+
 		return array(
 			'live_output'           => false,
 			'news_publication_name' => get_bloginfo( 'name' ),
 			'news_language'         => substr( get_bloginfo( 'language' ), 0, 2 ) ?: 'es',
+			'post_types_enabled'    => $post_types_enabled,
+			'taxonomies_enabled'    => $taxonomies_enabled,
 			'definitions'           => array(
 				array(
 					'slug'     => 'paginas',
@@ -74,6 +101,12 @@ class Cmdroom_Sitemap_Settings {
 		);
 	}
 
+	public static function public_post_types_for_toggle() {
+		return array_filter( Cmdroom_Meta_Settings::public_post_types(), function ( $pt ) {
+			return 'attachment' !== $pt->name;
+		} );
+	}
+
 	public static function get_news_publication_name() {
 		$opts = self::get_options();
 		return $opts['news_publication_name'];
@@ -94,8 +127,20 @@ class Cmdroom_Sitemap_Settings {
 			'live_output'           => ! empty( $_POST['live_output'] ),
 			'news_publication_name' => isset( $_POST['news_publication_name'] ) ? sanitize_text_field( wp_unslash( $_POST['news_publication_name'] ) ) : get_bloginfo( 'name' ),
 			'news_language'         => isset( $_POST['news_language'] ) ? sanitize_key( wp_unslash( $_POST['news_language'] ) ) : 'es',
+			'post_types_enabled'    => array(),
+			'taxonomies_enabled'    => array(),
 			'definitions'           => array(),
 		);
+
+		$posted_pt = isset( $_POST['post_types_enabled'] ) && is_array( $_POST['post_types_enabled'] ) ? wp_unslash( $_POST['post_types_enabled'] ) : array();
+		foreach ( self::public_post_types_for_toggle() as $pt ) {
+			$opts['post_types_enabled'][ $pt->name ] = in_array( $pt->name, $posted_pt, true );
+		}
+
+		$posted_tax = isset( $_POST['taxonomies_enabled'] ) && is_array( $_POST['taxonomies_enabled'] ) ? wp_unslash( $_POST['taxonomies_enabled'] ) : array();
+		foreach ( Cmdroom_Meta_Settings::public_taxonomies() as $tax ) {
+			$opts['taxonomies_enabled'][ $tax->name ] = in_array( $tax->name, $posted_tax, true );
+		}
 
 		$rows = isset( $_POST['definitions'] ) && is_array( $_POST['definitions'] ) ? wp_unslash( $_POST['definitions'] ) : array();
 
@@ -115,6 +160,7 @@ class Cmdroom_Sitemap_Settings {
 				'taxonomy'  => isset( $row['taxonomy'] ) ? sanitize_key( $row['taxonomy'] ) : '',
 				'terms'     => isset( $row['terms'] ) ? sanitize_text_field( $row['terms'] ) : '',
 				'limit'     => isset( $row['limit'] ) ? max( 1, min( 5000, (int) $row['limit'] ) ) : 1000,
+				'images'    => ! empty( $row['images'] ),
 			);
 		}
 
@@ -130,7 +176,7 @@ class Cmdroom_Sitemap_Settings {
 		$definitions = $opts['definitions'];
 		$blank_rows  = 3;
 		for ( $i = 0; $i < $blank_rows; $i++ ) {
-			$definitions[] = array( 'slug' => '', 'label' => '', 'enabled' => true, 'source' => 'posts', 'format' => 'standard', 'post_type' => 'post', 'taxonomy' => '', 'terms' => '', 'limit' => 1000 );
+			$definitions[] = array( 'slug' => '', 'label' => '', 'enabled' => true, 'source' => 'posts', 'format' => 'standard', 'post_type' => 'post', 'taxonomy' => '', 'terms' => '', 'limit' => 1000, 'images' => false );
 		}
 		?>
 		<div class="wrap cmdroom-wrap">
@@ -138,6 +184,18 @@ class Cmdroom_Sitemap_Settings {
 
 			<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
 				<div class="notice notice-success"><p><?php esc_html_e( 'Ajustes guardados.', 'command-room' ); ?></p></div>
+			<?php elseif ( isset( $_GET['cmdroom_pinged'] ) ) : ?>
+				<?php $ping_report = get_transient( 'cmdroom_sitemap_ping_report' ); ?>
+				<div class="notice notice-success">
+					<p><?php esc_html_e( 'Caché regenerada y ping enviado a los buscadores.', 'command-room' ); ?></p>
+					<?php if ( $ping_report ) : ?>
+						<ul style="list-style:disc;margin-left:1.5em;">
+							<?php foreach ( $ping_report as $engine => $status ) : ?>
+								<li><?php echo esc_html( $engine . ': ' . $status ); ?></li>
+							<?php endforeach; ?>
+						</ul>
+					<?php endif; ?>
+				</div>
 			<?php endif; ?>
 
 			<?php if ( self::is_live_output_enabled() ) : ?>
@@ -173,6 +231,33 @@ class Cmdroom_Sitemap_Settings {
 					</tr>
 				</table>
 
+				<h2><?php esc_html_e( 'Post types y taxonomías incluidos', 'command-room' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Filtro global: si desmarcas un tipo de contenido o taxonomía aquí, ninguna definición de abajo lo incluirá aunque esté configurada — útil para excluir de golpe algo sin tener que tocar cada definición una a una.', 'command-room' ); ?></p>
+				<table class="form-table">
+					<tr>
+						<th><?php esc_html_e( 'Tipos de contenido', 'command-room' ); ?></th>
+						<td>
+							<?php foreach ( self::public_post_types_for_toggle() as $pt ) : ?>
+								<label style="display:inline-block;margin-right:1.5em;">
+									<input type="checkbox" name="post_types_enabled[]" value="<?php echo esc_attr( $pt->name ); ?>" <?php checked( ! isset( $opts['post_types_enabled'][ $pt->name ] ) || $opts['post_types_enabled'][ $pt->name ] ); ?> />
+									<?php echo esc_html( $pt->labels->name ); ?>
+								</label>
+							<?php endforeach; ?>
+						</td>
+					</tr>
+					<tr>
+						<th><?php esc_html_e( 'Taxonomías', 'command-room' ); ?></th>
+						<td>
+							<?php foreach ( Cmdroom_Meta_Settings::public_taxonomies() as $tax ) : ?>
+								<label style="display:inline-block;margin-right:1.5em;">
+									<input type="checkbox" name="taxonomies_enabled[]" value="<?php echo esc_attr( $tax->name ); ?>" <?php checked( ! isset( $opts['taxonomies_enabled'][ $tax->name ] ) || $opts['taxonomies_enabled'][ $tax->name ] ); ?> />
+									<?php echo esc_html( $tax->labels->name ); ?>
+								</label>
+							<?php endforeach; ?>
+						</td>
+					</tr>
+				</table>
+
 				<h2><?php esc_html_e( 'Definiciones', 'command-room' ); ?></h2>
 				<table class="widefat">
 					<thead>
@@ -186,6 +271,7 @@ class Cmdroom_Sitemap_Settings {
 							<th><?php esc_html_e( 'Taxonomía', 'command-room' ); ?></th>
 							<th><?php esc_html_e( 'Términos (slugs, separados por coma; vacío = todos)', 'command-room' ); ?></th>
 							<th><?php esc_html_e( 'Límite', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Imágenes', 'command-room' ); ?></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -226,13 +312,24 @@ class Cmdroom_Sitemap_Settings {
 								</td>
 								<td><input type="text" name="definitions[<?php echo (int) $i; ?>][terms]" value="<?php echo esc_attr( $def['terms'] ); ?>" placeholder="cat-fisioterapia, cat-osteopatia" /></td>
 								<td><input type="number" name="definitions[<?php echo (int) $i; ?>][limit]" value="<?php echo esc_attr( $def['limit'] ); ?>" min="1" max="5000" class="small-text" /></td>
+								<td><input type="checkbox" name="definitions[<?php echo (int) $i; ?>][images]" value="1" <?php checked( ! empty( $def['images'] ) ); ?> /></td>
 							</tr>
 						<?php endforeach; ?>
 					</tbody>
 				</table>
-				<p class="description"><?php esc_html_e( 'Deja el slug en blanco para no guardar esa fila (así se "borra" una definición existente).', 'command-room' ); ?></p>
+				<p class="description"><?php esc_html_e( 'Deja el slug en blanco para no guardar esa fila (así se "borra" una definición existente). "Imágenes" solo aplica a Origen = Posts: añade la imagen destacada y las imágenes del contenido como <image:image>.', 'command-room' ); ?></p>
 
 				<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
+			</form>
+
+			<hr />
+
+			<h2><?php esc_html_e( 'Regenerar y avisar a los buscadores', 'command-room' ); ?></h2>
+			<p class="description"><?php esc_html_e( 'Invalida la caché de todos los sitemaps y hace ping a Google y Bing con la URL del índice — solo tiene sentido si la salida en el sitio está activada, si no los buscadores no pueden leer nada nuevo.', 'command-room' ); ?></p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( 'cmdroom_ping_sitemaps' ); ?>
+				<input type="hidden" name="action" value="cmdroom_ping_sitemaps" />
+				<?php submit_button( __( 'Regenerar y hacer ping', 'command-room' ), 'secondary', 'submit', false, self::is_live_output_enabled() ? array() : array( 'disabled' => 'disabled' ) ); ?>
 			</form>
 
 			<hr />

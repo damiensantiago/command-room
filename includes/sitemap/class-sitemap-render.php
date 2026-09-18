@@ -65,13 +65,26 @@ class Cmdroom_Sitemap_Render {
 			? self::query_term_entries( $def )
 			: self::query_post_entries( $def );
 
+		$with_images = ! empty( $def['images'] );
+		$namespaces  = 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"';
+		if ( $with_images ) {
+			$namespaces .= ' xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"';
+		}
+
 		$xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
-		$xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+		$xml .= '<urlset ' . $namespaces . '>' . "\n";
 
 		foreach ( $entries as $entry ) {
 			$xml .= "\t<url>\n";
 			$xml .= "\t\t<loc>" . esc_xml( $entry['url'] ) . "</loc>\n";
 			$xml .= "\t\t<lastmod>" . esc_xml( $entry['lastmod'] ) . "</lastmod>\n";
+			if ( $with_images && ! empty( $entry['images'] ) ) {
+				foreach ( $entry['images'] as $image_url ) {
+					$xml .= "\t\t<image:image>\n";
+					$xml .= "\t\t\t<image:loc>" . esc_xml( $image_url ) . "</image:loc>\n";
+					$xml .= "\t\t</image:image>\n";
+				}
+			}
 			$xml .= "\t</url>\n";
 		}
 
@@ -156,14 +169,47 @@ class Cmdroom_Sitemap_Render {
 	 * acotadas a los términos de una taxonomía.
 	 */
 	private static function query_post_entries( $def ) {
-		$entries = array();
+		$with_images = ! empty( $def['images'] );
+		$entries     = array();
 		foreach ( self::query_post_ids( $def ) as $post_id ) {
-			$entries[] = array(
+			$entry = array(
 				'url'     => get_permalink( $post_id ),
 				'lastmod' => get_post_modified_time( 'c', false, $post_id ),
 			);
+			if ( $with_images ) {
+				$entry['images'] = self::get_post_image_urls( $post_id );
+			}
+			$entries[] = $entry;
 		}
 		return $entries;
+	}
+
+	/**
+	 * Imagen destacada + imágenes embebidas en el contenido (hasta un
+	 * límite razonable) — cubre el caso típico de posts sin imagen
+	 * destacada asignada pero con fotos dentro del cuerpo.
+	 */
+	private static function get_post_image_urls( $post_id ) {
+		$urls = array();
+
+		$thumb_id = get_post_thumbnail_id( $post_id );
+		if ( $thumb_id ) {
+			$thumb_url = wp_get_attachment_image_url( $thumb_id, 'full' );
+			if ( $thumb_url ) {
+				$urls[] = $thumb_url;
+			}
+		}
+
+		$post = get_post( $post_id );
+		if ( $post && preg_match_all( '/<img[^>]+src=["\']([^"\']+)["\']/i', $post->post_content, $matches ) ) {
+			foreach ( array_slice( $matches[1], 0, 10 ) as $src ) {
+				if ( ! in_array( $src, $urls, true ) ) {
+					$urls[] = $src;
+				}
+			}
+		}
+
+		return array_slice( array_unique( $urls ), 0, 20 );
 	}
 
 	/**
