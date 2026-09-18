@@ -5,11 +5,31 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Construye el @graph de datos estructurados. Un único array de nodos por
- * página — nunca dos <script type="application/ld+json"> sueltos — para no
+ * página -- nunca dos <script type="application/ld+json"> sueltos -- para no
  * repetir el error de @type incorrecto dentro de @graph que se documentó en
  * la auditoría SEO de Dripbase.
+ *
+ * Desde 0.10.0 el nodo específico de cada página (Article/WebPage/
+ * CollectionPage/ProfilePage...) ya no se construye a mano en PHP: se lee el
+ * bloque JSON editable guardado en Ajustes → Datos estructurados
+ * (Cmdroom_Schema_Settings), se le pasan las variables %schema_*%
+ * (Cmdroom_Schema_Variables, que ya devuelve valores pre-escapados para
+ * JSON) y se decodifica. Si el resultado no es JSON válido -- typo al
+ * editar a mano -- NO se rompe la página: se omite ese nodo y el @graph
+ * sigue saliendo con Organization/WebSite/Breadcrumb.
+ *
+ * Organization, WebSite y BreadcrumbList SÍ siguen construyéndose en PHP tal
+ * cual: son estructurales y van siempre en el @graph sin importar el tipo de
+ * página.
  */
 class Cmdroom_Schema_Builder {
+
+	/**
+	 * Último error de JSON inválido (si lo hubo) al resolver el nodo
+	 * específico de la página actual -- lo usa la vista previa de
+	 * Herramientas para avisar sin filtrar el error al frontend.
+	 */
+	public static $last_error = '';
 
 	public static function build_for_post( $post ) {
 		$post = get_post( $post );
@@ -17,12 +37,9 @@ class Cmdroom_Schema_Builder {
 			return null;
 		}
 
-		$type = Cmdroom_Schema_Settings::get_post_type_schema( $post->post_type );
-		if ( '' === $type ) {
-			return null;
-		}
+		self::$last_error = '';
 
-		$meta = Cmdroom_Meta_Resolver::resolve_for_post( $post );
+		$template = Cmdroom_Schema_Settings::get_post_type_schema( $post->post_type );
 
 		$graph = array(
 			self::organization_node(),
@@ -30,39 +47,12 @@ class Cmdroom_Schema_Builder {
 			self::breadcrumb_node( Cmdroom_Breadcrumbs::get_items_for_post( $post ) ),
 		);
 
-		// headline usa el título real del post, no el título SEO con %sep%
-		// %sitename% añadido: Google penaliza un headline que no es el
-		// titular real y recomienda quedarse por debajo de ~110 caracteres.
-		$headline = wp_trim_words( get_the_title( $post ), 20, '' );
-
-		$node = array(
-			'@type'            => $type,
-			'@id'              => get_permalink( $post ) . '#' . strtolower( $type ),
-			'headline'         => $headline,
-			'name'             => $headline,
-			'description'      => $meta['description'],
-			'url'              => get_permalink( $post ),
-			'inLanguage'        => get_bloginfo( 'language' ),
-			'datePublished'    => get_post_time( 'c', false, $post ),
-			'dateModified'     => get_post_modified_time( 'c', false, $post ),
-			'isPartOf'         => array( '@id' => home_url( '/#website' ) ),
-			'mainEntityOfPage' => get_permalink( $post ),
-			'publisher'        => array( '@id' => self::organization_id() ),
-			'author'           => self::author_node( $post ),
-		);
-
-		if ( $meta['og_image'] ) {
-			$node['image'] = array(
-				'@type' => 'ImageObject',
-				'url'   => $meta['og_image'],
-			);
+		if ( '' !== trim( (string) $template ) ) {
+			$node = self::resolve_node( $template, array( 'post' => $post ), 'tipo de contenido "' . $post->post_type . '"' );
+			if ( null !== $node ) {
+				$graph[] = $node;
+			}
 		}
-
-		if ( 'BlogPosting' === $type ) {
-			$node = array_merge( $node, self::blog_posting_extras( $post ) );
-		}
-
-		$graph[] = array_filter( $node );
 
 		return array( '@context' => 'https://schema.org', '@graph' => $graph );
 	}
@@ -72,23 +62,22 @@ class Cmdroom_Schema_Builder {
 			return null;
 		}
 
-		$meta = Cmdroom_Meta_Resolver::resolve_for_term( $term );
-		$url  = get_term_link( $term );
+		self::$last_error = '';
+
+		$template = Cmdroom_Schema_Settings::get_taxonomy_schema( $term->taxonomy );
 
 		$graph = array(
 			self::organization_node(),
 			self::website_node(),
 			self::breadcrumb_node( Cmdroom_Breadcrumbs::get_items_for_term( $term ) ),
-			array_filter( array(
-				'@type'       => 'CollectionPage',
-				'@id'         => $url . '#collectionpage',
-				'name'        => $meta['title'],
-				'description' => $meta['description'],
-				'url'         => $url,
-				'inLanguage'  => get_bloginfo( 'language' ),
-				'isPartOf'    => array( '@id' => home_url( '/#website' ) ),
-			) ),
 		);
+
+		if ( '' !== trim( (string) $template ) ) {
+			$node = self::resolve_node( $template, array( 'term' => $term ), 'taxonomía "' . $term->taxonomy . '"' );
+			if ( null !== $node ) {
+				$graph[] = $node;
+			}
+		}
 
 		return array( '@context' => 'https://schema.org', '@graph' => $graph );
 	}
@@ -101,6 +90,67 @@ class Cmdroom_Schema_Builder {
 		);
 
 		return array( '@context' => 'https://schema.org', '@graph' => $graph );
+	}
+
+	/**
+	 * Nuevo en 0.10.0: el archivo de autor tenía un bloque configurable en
+	 * Ajustes desde la sesión anterior, pero nunca estaba conectado a la
+	 * salida real (Cmdroom_Schema_Output::resolve_current() no cubría
+	 * is_author()). Queda cableado aquí y en Schema_Output.
+	 */
+	public static function build_for_author( $user ) {
+		if ( ! ( $user instanceof WP_User ) ) {
+			return null;
+		}
+
+		self::$last_error = '';
+
+		$template = Cmdroom_Schema_Settings::get_author_archive_schema();
+
+		// No hay Cmdroom_Breadcrumbs::get_items_for_author() todavía, así
+		// que el archivo de autor no lleva BreadcrumbList -- limitación
+		// conocida, no se resuelve en esta sesión.
+		$graph = array(
+			self::organization_node(),
+			self::website_node(),
+		);
+
+		if ( '' !== trim( (string) $template ) ) {
+			$node = self::resolve_node( $template, array( 'author' => $user ), 'página de autor' );
+			if ( null !== $node ) {
+				$graph[] = $node;
+			}
+		}
+
+		return array( '@context' => 'https://schema.org', '@graph' => $graph );
+	}
+
+	/**
+	 * Resuelve el bloque JSON editable de un tipo de página: sustituye
+	 * variables %schema_*% (ya escapadas para JSON por
+	 * Cmdroom_Schema_Variables) y decodifica. Si el JSON resultante no es
+	 * válido, no rompe la página -- se omite el nodo, se deja un
+	 * error_log() y se guarda el motivo en self::$last_error para que la
+	 * vista previa de Herramientas pueda avisar (nunca se imprime ese aviso
+	 * en el frontend).
+	 */
+	private static function resolve_node( $template, $context, $label ) {
+		$resolved = Cmdroom_Schema_Variables::replace( $template, $context );
+
+		$node = json_decode( $resolved, true );
+
+		if ( ! is_array( $node ) ) {
+			self::$last_error = sprintf(
+				'El bloque de datos estructurados de %1$s no es JSON válido: %2$s',
+				$label,
+				json_last_error_msg()
+			);
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- aviso intencional de plantilla de admin mal formada, no un error de programación.
+			error_log( '[Command Room] ' . self::$last_error );
+			return null;
+		}
+
+		return array_filter( $node );
 	}
 
 	private static function organization_id() {
@@ -118,7 +168,7 @@ class Cmdroom_Schema_Builder {
 		);
 
 		if ( $b['logo'] ) {
-			$node['logo'] = array( '@type' => 'ImageObject', 'url' => $b['logo'] );
+			$node['logo']  = array( '@type' => 'ImageObject', 'url' => $b['logo'] );
 			$node['image'] = $b['logo'];
 		}
 		if ( $b['telephone'] ) {
@@ -161,31 +211,6 @@ class Cmdroom_Schema_Builder {
 				'query-input' => 'required name=search_term_string',
 			),
 		);
-	}
-
-	private static function author_node( WP_Post $post ) {
-		$author_id = (int) $post->post_author;
-		return array_filter( array(
-			'@type' => 'Person',
-			'@id'   => get_author_posts_url( $author_id ) . '#person',
-			'name'  => get_the_author_meta( 'display_name', $author_id ),
-			'url'   => get_author_posts_url( $author_id ),
-		) );
-	}
-
-	private static function blog_posting_extras( WP_Post $post ) {
-		$content    = wp_strip_all_tags( strip_shortcodes( $post->post_content ) );
-		$word_count = str_word_count( $content );
-		$minutes    = max( 1, (int) ceil( $word_count / 200 ) );
-
-		$tags     = get_the_terms( $post, 'post_tag' );
-		$keywords = ( $tags && ! is_wp_error( $tags ) ) ? wp_list_pluck( $tags, 'name' ) : array();
-
-		return array_filter( array(
-			'wordCount'    => $word_count,
-			'timeRequired' => 'PT' . $minutes . 'M',
-			'keywords'     => $keywords ? implode( ', ', $keywords ) : '',
-		) );
 	}
 
 	/**

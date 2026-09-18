@@ -44,6 +44,9 @@ class Cmdroom_Schema_Output {
 		if ( is_front_page() || is_home() ) {
 			return Cmdroom_Schema_Builder::build_for_home();
 		}
+		if ( is_author() ) {
+			return Cmdroom_Schema_Builder::build_for_author( get_queried_object() );
+		}
 		return null;
 	}
 }

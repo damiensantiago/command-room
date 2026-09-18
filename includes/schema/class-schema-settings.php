@@ -5,28 +5,25 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Ajustes de datos estructurados: negocio/organización global (nodo que
- * aparece en el @graph de cada página) y el @type de schema que le
- * corresponde a cada tipo de contenido.
+ * aparece en el @graph de cada página) y el bloque JSON del nodo específico
+ * que le corresponde a cada tipo de contenido/taxonomía/autor.
+ *
+ * Desde 0.10.0 cada elemento guarda el CUERPO JSON completo del nodo (no
+ * solo su @type) -- editable a mano en Ajustes → Datos estructurados. Sigue
+ * siendo UN nodo más dentro del único @graph que construye
+ * Cmdroom_Schema_Builder (nunca un <script type="application/ld+json">
+ * independiente -- ver el docblock de esa clase).
  */
 class Cmdroom_Schema_Settings {
 
 	const OPTION = 'cmdroom_schema_options';
 
 	const BUSINESS_TYPES = array(
-		'Organization'       => 'Organization (genérico)',
-		'LocalBusiness'      => 'LocalBusiness (negocio local genérico)',
+		'Organization'        => 'Organization (genérico)',
+		'LocalBusiness'       => 'LocalBusiness (negocio local genérico)',
 		'ProfessionalService' => 'ProfessionalService',
-		'MedicalBusiness'    => 'MedicalBusiness',
-		'MedicalClinic'      => 'MedicalClinic (clínica médica)',
-	);
-
-	const POST_TYPE_SCHEMA_TYPES = array(
-		''            => '— Desactivado —',
-		'WebPage'     => 'WebPage',
-		'Article'     => 'Article',
-		'BlogPosting' => 'BlogPosting',
-		'Service'     => 'Service',
-		'ProfilePage' => 'ProfilePage',
+		'MedicalBusiness'     => 'MedicalBusiness',
+		'MedicalClinic'       => 'MedicalClinic (clínica médica)',
 	);
 
 	public static function init() {
@@ -39,7 +36,9 @@ class Cmdroom_Schema_Settings {
 	}
 
 	public static function get_options() {
-		return wp_parse_args( get_option( self::OPTION, array() ), self::defaults() );
+		$saved = get_option( self::OPTION, array() );
+		$saved = self::migrate_legacy( $saved );
+		return wp_parse_args( $saved, self::defaults() );
 	}
 
 	public static function get_business() {
@@ -52,18 +51,145 @@ class Cmdroom_Schema_Settings {
 		if ( isset( $opts['post_types'][ $post_type ] ) ) {
 			return $opts['post_types'][ $post_type ];
 		}
-		return 'page' === $post_type ? 'WebPage' : 'Article';
+		return 'page' === $post_type ? self::default_webpage_block() : self::default_article_block();
+	}
+
+	public static function get_taxonomy_schema( $taxonomy ) {
+		$opts = self::get_options();
+		if ( isset( $opts['taxonomies'][ $taxonomy ] ) ) {
+			return $opts['taxonomies'][ $taxonomy ];
+		}
+		return self::default_collectionpage_block();
 	}
 
 	public static function get_author_archive_schema() {
 		$opts = self::get_options();
-		return isset( $opts['author_archive'] ) ? $opts['author_archive'] : 'ProfilePage';
+		return isset( $opts['author_archive'] ) ? $opts['author_archive'] : self::default_profilepage_block();
+	}
+
+	/**
+	 * Convierte cualquier dato guardado con el modelo viejo (un string
+	 * simple con el @type, ej. 'Article') al bloque JSON completo, usando
+	 * ese mismo @type -- no se pierde lo que ya estuviera elegido. Las
+	 * taxonomías no tenían modelo viejo (siempre CollectionPage fijo en
+	 * PHP), así que no hay nada que migrar ahí.
+	 */
+	private static function migrate_legacy( $saved ) {
+		if ( ! is_array( $saved ) ) {
+			return $saved;
+		}
+
+		if ( ! empty( $saved['post_types'] ) && is_array( $saved['post_types'] ) ) {
+			foreach ( $saved['post_types'] as $pt_name => $value ) {
+				if ( is_string( $value ) && '' !== $value && false === strpos( ltrim( $value ), '{' ) ) {
+					$saved['post_types'][ $pt_name ] = 'WebPage' === $value
+						? self::default_webpage_block( $value )
+						: self::default_article_block( $value );
+				}
+			}
+		}
+
+		if ( isset( $saved['author_archive'] ) && is_string( $saved['author_archive'] ) && '' !== $saved['author_archive'] && false === strpos( ltrim( $saved['author_archive'] ), '{' ) ) {
+			$saved['author_archive'] = self::default_profilepage_block( $saved['author_archive'] );
+		}
+
+		return $saved;
+	}
+
+	/**
+	 * Bloque JSON para tipos de contenido "artículo" (posts, entradas de
+	 * blog...) -- equivalente al nodo que antes construía en PHP
+	 * Cmdroom_Schema_Builder::build_for_post(). Si el tipo es 'BlogPosting'
+	 * añade wordCount/timeRequired/keywords, igual que hacía antes
+	 * blog_posting_extras() -- para que migrar un tipo que ya tenía
+	 * 'BlogPosting' elegido no pierda esos campos.
+	 */
+	private static function default_article_block( $type = 'Article' ) {
+		$extra = '';
+		if ( 'BlogPosting' === $type ) {
+			$extra = ",\n  \"wordCount\": %schema_word_count%,\n  \"timeRequired\": \"%schema_time_required%\",\n  \"keywords\": \"%schema_keywords%\"";
+		}
+
+		return '{
+  "@type": "' . $type . '",
+  "@id": "%schema_url%#' . strtolower( $type ) . '",
+  "headline": "%schema_headline%",
+  "name": "%schema_headline%",
+  "description": "%schema_description%",
+  "url": "%schema_url%",
+  "inLanguage": "%schema_lang%",
+  "datePublished": "%schema_date_published%",
+  "dateModified": "%schema_date_modified%",
+  "isPartOf": { "@id": "%schema_website_id%" },
+  "mainEntityOfPage": "%schema_url%",
+  "publisher": { "@id": "%schema_organization_id%" },
+  "author": { "@type": "Person", "@id": "%schema_author_url%#person", "name": "%schema_author_name%", "url": "%schema_author_url%" }' . $extra . '
+}';
+	}
+
+	/**
+	 * Bloque JSON para páginas corporativas -- sin author/fechas de
+	 * publicación, igual que hacía la lógica condicional vieja.
+	 */
+	private static function default_webpage_block( $type = 'WebPage' ) {
+		return '{
+  "@type": "' . $type . '",
+  "@id": "%schema_url%#' . strtolower( $type ) . '",
+  "name": "%schema_headline%",
+  "description": "%schema_description%",
+  "url": "%schema_url%",
+  "inLanguage": "%schema_lang%",
+  "isPartOf": { "@id": "%schema_website_id%" },
+  "mainEntityOfPage": "%schema_url%",
+  "publisher": { "@id": "%schema_organization_id%" }
+}';
+	}
+
+	/**
+	 * Bloque JSON para taxonomías -- equivalente al CollectionPage que antes
+	 * era un array literal fijo en build_for_term().
+	 */
+	private static function default_collectionpage_block() {
+		return '{
+  "@type": "CollectionPage",
+  "@id": "%schema_url%#collectionpage",
+  "name": "%schema_headline%",
+  "description": "%schema_description%",
+  "url": "%schema_url%",
+  "inLanguage": "%schema_lang%",
+  "isPartOf": { "@id": "%schema_website_id%" }
+}';
+	}
+
+	/**
+	 * Bloque JSON para la página de autor -- ProfilePage es el tipo
+	 * recomendado por Schema.org para páginas de perfil.
+	 */
+	private static function default_profilepage_block( $type = 'ProfilePage' ) {
+		return '{
+  "@type": "' . $type . '",
+  "@id": "%schema_url%#' . strtolower( $type ) . '",
+  "name": "%schema_headline%",
+  "description": "%schema_description%",
+  "url": "%schema_url%",
+  "inLanguage": "%schema_lang%",
+  "isPartOf": { "@id": "%schema_website_id%" },
+  "mainEntityOfPage": "%schema_url%",
+  "publisher": { "@id": "%schema_organization_id%" }
+}';
 	}
 
 	private static function defaults() {
 		$post_types = array();
 		foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) {
-			$post_types[ $pt->name ] = 'page' === $pt->name ? 'WebPage' : 'Article';
+			$post_types[ $pt->name ] = 'page' === $pt->name
+				? self::default_webpage_block()
+				: self::default_article_block();
+		}
+
+		$taxonomies = array();
+		foreach ( Cmdroom_Meta_Settings::public_taxonomies() as $tax ) {
+			$taxonomies[ $tax->name ] = self::default_collectionpage_block();
 		}
 
 		return array(
@@ -80,8 +206,9 @@ class Cmdroom_Schema_Settings {
 				'country'   => 'ES',
 				'sameas'    => '',
 			),
-			'post_types'  => $post_types,
-			'author_archive' => 'ProfilePage',
+			'post_types'     => $post_types,
+			'taxonomies'     => $taxonomies,
+			'author_archive' => self::default_profilepage_block(),
 		);
 	}
 
@@ -103,15 +230,25 @@ class Cmdroom_Schema_Settings {
 			}
 		}
 
+		// Bloques JSON: guardado sin sanitizar de más -- mismo criterio que
+		// los bloques de <head> de Metas (ver Cmdroom_Meta_Settings::handle_save()),
+		// contenido de admin de confianza detrás de manage_options + nonce.
 		foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) {
-			$key = 'pt_schema_' . $pt->name;
-			if ( isset( $_POST[ $key ] ) && array_key_exists( $_POST[ $key ], self::POST_TYPE_SCHEMA_TYPES ) ) {
-				$opts['post_types'][ $pt->name ] = sanitize_text_field( wp_unslash( $_POST[ $key ] ) );
+			$key = 'pt_schema_' . $pt->name . '_json';
+			if ( isset( $_POST[ $key ] ) ) {
+				$opts['post_types'][ $pt->name ] = wp_unslash( $_POST[ $key ] );
 			}
 		}
 
-		if ( isset( $_POST['author_archive_schema'] ) && array_key_exists( $_POST['author_archive_schema'], self::POST_TYPE_SCHEMA_TYPES ) ) {
-			$opts['author_archive'] = sanitize_text_field( wp_unslash( $_POST['author_archive_schema'] ) );
+		foreach ( Cmdroom_Meta_Settings::public_taxonomies() as $tax ) {
+			$key = 'tax_schema_' . $tax->name . '_json';
+			if ( isset( $_POST[ $key ] ) ) {
+				$opts['taxonomies'][ $tax->name ] = wp_unslash( $_POST[ $key ] );
+			}
+		}
+
+		if ( isset( $_POST['author_archive_schema_json'] ) ) {
+			$opts['author_archive'] = wp_unslash( $_POST['author_archive_schema_json'] );
 		}
 
 		update_option( self::OPTION, $opts );
@@ -174,13 +311,22 @@ class Cmdroom_Schema_Settings {
 					</tr>
 				</table>
 
-				<h2><?php esc_html_e( 'Tipo de schema por tipo de contenido', 'command-room' ); ?></h2>
+				<h2><?php esc_html_e( 'Nodo de schema por tipo de contenido', 'command-room' ); ?></h2>
+				<p class="description">
+					<?php esc_html_e( 'Cada bloque es UN nodo dentro del único @graph JSON-LD de la página (junto a Organization, WebSite y BreadcrumbList, que no cambian) -- nunca un <script> independiente. Variables:', 'command-room' ); ?>
+					<code>%schema_headline%</code> <code>%schema_description%</code> <code>%schema_url%</code> <code>%schema_lang%</code>
+					<code>%schema_date_published%</code> <code>%schema_date_modified%</code> <code>%schema_author_name%</code> <code>%schema_author_url%</code>
+					<code>%schema_image%</code> <code>%schema_word_count%</code> <code>%schema_time_required%</code> <code>%schema_keywords%</code>
+					<code>%schema_organization_id%</code> <code>%schema_website_id%</code>
+					— <?php esc_html_e( 'ver el glosario completo en SEO → Variables.', 'command-room' ); ?>
+				</p>
 
 				<?php
 				$schema_tabs = array(
 					'contenido'    => __( 'Contenido', 'command-room' ),
 					'corporativas' => __( 'Páginas corporativas', 'command-room' ),
-					'categorias'   => __( 'Categorías y Tags', 'command-room' ),
+					'categorias'   => __( 'Categorías', 'command-room' ),
+					'tags'         => __( 'Tags', 'command-room' ),
 					'autor'        => __( 'Página de autor', 'command-room' ),
 				);
 				$active_tab = Cmdroom_Admin_Menu::get_active_tab( $schema_tabs );
@@ -197,7 +343,11 @@ class Cmdroom_Schema_Settings {
 				</div>
 
 				<div class="cmdroom-tab-panel" data-tab="categorias" <?php echo 'categorias' === $active_tab ? '' : 'style="display:none;"'; ?>>
-					<p class="description"><?php esc_html_e( 'Las categorías y etiquetas siempre usan CollectionPage — es lo que recomienda Google para archivos.', 'command-room' ); ?></p>
+					<?php self::render_taxonomy_schema_table( Cmdroom_Meta_Settings::category_taxonomies(), $opts ); ?>
+				</div>
+
+				<div class="cmdroom-tab-panel" data-tab="tags" <?php echo 'tags' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<?php self::render_taxonomy_schema_table( Cmdroom_Meta_Settings::tag_taxonomies(), $opts ); ?>
 				</div>
 
 				<div class="cmdroom-tab-panel" data-tab="autor" <?php echo 'autor' === $active_tab ? '' : 'style="display:none;"'; ?>>
@@ -205,11 +355,7 @@ class Cmdroom_Schema_Settings {
 						<tr>
 							<th><?php esc_html_e( 'Página de autor', 'command-room' ); ?></th>
 							<td>
-								<select name="author_archive_schema">
-									<?php foreach ( self::POST_TYPE_SCHEMA_TYPES as $type => $label ) : ?>
-										<option value="<?php echo esc_attr( $type ); ?>" <?php selected( $opts['author_archive'], $type ); ?>><?php echo esc_html( $label ); ?></option>
-									<?php endforeach; ?>
-								</select>
+								<textarea name="author_archive_schema_json" class="large-text code" rows="10"><?php echo esc_textarea( $opts['author_archive'] ); ?></textarea>
 								<p class="description"><?php esc_html_e( 'ProfilePage es el tipo recomendado por Schema.org para páginas de perfil/autor.', 'command-room' ); ?></p>
 							</td>
 						</tr>
@@ -223,8 +369,9 @@ class Cmdroom_Schema_Settings {
 	}
 
 	/**
-	 * Tabla form-table de "tipo de schema" para un listado de post types,
-	 * compartida entre las pestañas Contenido y Páginas corporativas.
+	 * Tabla form-table con un textarea de bloque JSON por elemento, para un
+	 * listado de post types -- compartida entre Contenido y Páginas
+	 * corporativas.
 	 */
 	private static function render_post_type_schema_table( $post_types, $opts ) {
 		?>
@@ -235,11 +382,29 @@ class Cmdroom_Schema_Settings {
 				<tr>
 					<th><?php echo esc_html( $pt->labels->name ); ?></th>
 					<td>
-						<select name="pt_schema_<?php echo esc_attr( $pt->name ); ?>">
-							<?php foreach ( self::POST_TYPE_SCHEMA_TYPES as $type => $label ) : ?>
-								<option value="<?php echo esc_attr( $type ); ?>" <?php selected( $current, $type ); ?>><?php echo esc_html( $label ); ?></option>
-							<?php endforeach; ?>
-						</select>
+						<textarea name="pt_schema_<?php echo esc_attr( $pt->name ); ?>_json" class="large-text code" rows="10"><?php echo esc_textarea( $current ); ?></textarea>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+		<?php
+	}
+
+	/**
+	 * Igual que render_post_type_schema_table() pero para taxonomías --
+	 * cada categoría/etiqueta tiene su propio bloque independiente, misma
+	 * granularidad que en Metas.
+	 */
+	private static function render_taxonomy_schema_table( $taxonomies, $opts ) {
+		?>
+		<table class="form-table">
+			<?php foreach ( $taxonomies as $tax ) :
+				$current = $opts['taxonomies'][ $tax->name ] ?? '';
+				?>
+				<tr>
+					<th><?php echo esc_html( $tax->labels->name ); ?></th>
+					<td>
+						<textarea name="tax_schema_<?php echo esc_attr( $tax->name ); ?>_json" class="large-text code" rows="10"><?php echo esc_textarea( $current ); ?></textarea>
 					</td>
 				</tr>
 			<?php endforeach; ?>
