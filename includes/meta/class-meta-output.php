@@ -4,15 +4,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Imprime título, meta description, canonical, robots y Open Graph en
- * wp_head — pero SOLO si "Salida en el sitio" está activado en Ajustes.
- * Apagado por defecto para poder convivir con Rank Math mientras se
- * verifica cada plantilla, sin duplicar metas en las páginas de dev.
+ * Imprime el bloque de <head> (título+descripción editables), canonical,
+ * robots y Open Graph en wp_head -- pero SOLO si "Salida en el sitio" está
+ * activado en Ajustes. Apagado por defecto para poder convivir con Rank Math
+ * mientras se verifica cada plantilla, sin duplicar metas en las páginas de
+ * dev.
  */
 class Cmdroom_Meta_Output {
 
 	public static function init() {
-		add_filter( 'pre_get_document_title', array( __CLASS__, 'filter_title' ), 20 );
+		add_action( 'wp_head', array( __CLASS__, 'maybe_unhook_native_title' ), 0 );
 		add_action( 'wp_head', array( __CLASS__, 'print_meta_tags' ), 1 );
 	}
 
@@ -20,12 +21,23 @@ class Cmdroom_Meta_Output {
 		return ! is_admin() && Cmdroom_Meta_Settings::is_live_output_enabled();
 	}
 
-	public static function filter_title( $title ) {
+	/**
+	 * El bloque de <head> editable puede traer su propio <title> con
+	 * formato arbitrario, así que ya no usamos el filtro
+	 * pre_get_document_title -- en su lugar quitamos el <title> nativo de
+	 * WordPress para que no salga duplicado.
+	 *
+	 * Limitación conocida: esto solo funciona en temas con soporte
+	 * "title-tag" (el estándar moderno, que es lo que engancha
+	 * _wp_render_title_tag() a wp_head con prioridad 1). Un tema que
+	 * imprima <title> a mano en header.php seguiría duplicando -- no se
+	 * resuelve aquí.
+	 */
+	public static function maybe_unhook_native_title() {
 		if ( ! self::is_active() ) {
-			return $title;
+			return;
 		}
-		$data = self::resolve_current();
-		return $data && $data['title'] ? $data['title'] : $title;
+		remove_action( 'wp_head', '_wp_render_title_tag', 1 );
 	}
 
 	public static function print_meta_tags() {
@@ -38,15 +50,32 @@ class Cmdroom_Meta_Output {
 			return;
 		}
 
-		if ( $data['description'] ) {
-			printf( '<meta name="description" content="%s" />' . "\n", esc_attr( $data['description'] ) );
+		if ( ! empty( $data['head_html'] ) ) {
+			// Bloque de admin de confianza -- se imprime tal cual, sin
+			// esc_html(), mismo criterio que el módulo de inyección de
+			// código (includes/code-injection/class-code-injection.php):
+			// permite <title>/<meta> con formato arbitrario, y deja la
+			// puerta abierta a que alguien meta JSON-LD/verificación a mano
+			// aquí sin que se lo destruyamos.
+			echo $data['head_html'] . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput -- intencional, ver docblock de la clase
+		} else {
+			// Si el bloque se deja vacío (o el contexto no tiene plantilla
+			// propia, como los archivos de fecha), no dejamos la página sin
+			// metas -- mismo comportamiento que había antes del bloque
+			// editable.
+			if ( $data['title'] ) {
+				printf( '<title>%s</title>' . "\n", esc_html( $data['title'] ) );
+			}
+			if ( $data['description'] ) {
+				printf( '<meta name="description" content="%s" />' . "\n", esc_attr( $data['description'] ) );
+			}
 		}
 
 		if ( $data['canonical'] ) {
 			printf( '<link rel="canonical" href="%s" />' . "\n", esc_url( $data['canonical'] ) );
 		}
 
-		$robots = array();
+		$robots   = array();
 		$robots[] = ! empty( $data['noindex'] ) ? 'noindex' : 'index';
 		$robots[] = ! empty( $data['nofollow'] ) ? 'nofollow' : 'follow';
 		printf( '<meta name="robots" content="%s" />' . "\n", esc_attr( implode( ', ', $robots ) ) );
@@ -82,8 +111,8 @@ class Cmdroom_Meta_Output {
 		} elseif ( is_front_page() || is_home() ) {
 			$data = Cmdroom_Meta_Resolver::resolve_for_home();
 		} elseif ( is_author() ) {
-			$data = self::resolve_for_generic_archive();
-			if ( self::archive_rule_enabled( 'noindex_author' ) ) {
+			$data = Cmdroom_Meta_Resolver::resolve_for_author( get_queried_object() );
+			if ( $data && self::archive_rule_enabled( 'noindex_author' ) ) {
 				$data['noindex'] = true;
 			}
 		} elseif ( is_date() ) {
@@ -113,9 +142,10 @@ class Cmdroom_Meta_Output {
 	}
 
 	/**
-	 * Paquete de metas mínimo para archivos de autor/fecha — no tienen
-	 * plantilla propia en el módulo de Metas todavía, así que se usa el
-	 * título nativo de WordPress para esos archivos como base.
+	 * Paquete de metas mínimo para archivos de fecha -- no tienen plantilla
+	 * propia en el módulo de Metas, así que se usa el título nativo de
+	 * WordPress para esos archivos como base. Sin 'head_html': cae siempre
+	 * en el fallback de print_meta_tags().
 	 */
 	private static function resolve_for_generic_archive() {
 		$title = wp_strip_all_tags( get_the_archive_title() );

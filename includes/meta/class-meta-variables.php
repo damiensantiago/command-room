@@ -34,6 +34,17 @@ class Cmdroom_Meta_Variables {
 		return trim( $replaced );
 	}
 
+	/**
+	 * Wrapper público de build_vars() -- lo usa el resolver para calcular el
+	 * título/descripción "en bruto" (basados en contenido real, no en el
+	 * bloque de <head> editable) que alimentan Open Graph, y el motor de
+	 * variables de Datos estructurados (Cmdroom_Schema_Variables) para
+	 * reutilizar %schema_description% a partir de la misma fuente.
+	 */
+	public static function get_vars( $context = array() ) {
+		return self::build_vars( $context );
+	}
+
 	private static function build_vars( $context ) {
 		$post   = isset( $context['post'] ) ? $context['post'] : null;
 		$term   = isset( $context['term'] ) ? $context['term'] : null;

@@ -4,9 +4,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Plantillas de meta título/descripción por tipo de contenido y taxonomía,
- * separador y el interruptor de salida en vivo. Todo vive en una sola opción
+ * Plantillas de metas por tipo de contenido y taxonomía, separador y el
+ * interruptor de salida en vivo. Todo vive en una sola opción
  * (cmdroom_meta_options) para no llenar wp_options de filas sueltas.
+ *
+ * Desde 0.10.0 cada elemento (post type, taxonomía, home, autor) guarda un
+ * único bloque de HTML crudo (clave 'html') en vez de título/descripción
+ * separados -- ese bloque se imprime tal cual como <title>/<meta
+ * description> en el <head>. Sigue viviendo dentro de un array por
+ * compatibilidad hacia delante (por si algún día se necesita guardar algo
+ * más junto al bloque) y porque así migrate_entry() puede distinguir el
+ * formato viejo del nuevo sin ambigüedad.
  */
 class Cmdroom_Meta_Settings {
 
@@ -24,6 +32,7 @@ class Cmdroom_Meta_Settings {
 	public static function get_options() {
 		$defaults = self::defaults();
 		$saved    = get_option( self::OPTION, array() );
+		$saved    = self::migrate_legacy( $saved );
 		return wp_parse_args( $saved, $defaults );
 	}
 
@@ -37,7 +46,7 @@ class Cmdroom_Meta_Settings {
 		if ( isset( $opts['post_types'][ $post_type ] ) ) {
 			return $opts['post_types'][ $post_type ];
 		}
-		return array( 'title' => '%title% %sep% %sitename%', 'description' => '%excerpt%' );
+		return array( 'html' => self::default_html_block( '%title% %sep% %sitename%', '%excerpt%' ) );
 	}
 
 	public static function get_taxonomy_template( $taxonomy ) {
@@ -45,7 +54,7 @@ class Cmdroom_Meta_Settings {
 		if ( isset( $opts['taxonomies'][ $taxonomy ] ) ) {
 			return $opts['taxonomies'][ $taxonomy ];
 		}
-		return array( 'title' => '%term_title% %sep% %sitename%', 'description' => '%excerpt%' );
+		return array( 'html' => self::default_html_block( '%term_title% %sep% %sitename%', '%excerpt%' ) );
 	}
 
 	public static function get_home_template() {
@@ -58,35 +67,80 @@ class Cmdroom_Meta_Settings {
 		return $opts['author_archive'];
 	}
 
+	/**
+	 * Formato por defecto del bloque de metas: <title> + meta description
+	 * en dos líneas. Es también el formato que produce la migración desde
+	 * el modelo viejo (título/descripción separados).
+	 */
+	private static function default_html_block( $title, $description ) {
+		return sprintf( "<title>%s</title>\n<meta name=\"description\" content=\"%s\" />", $title, $description );
+	}
+
+	/**
+	 * Convierte cualquier entrada guardada con el modelo viejo
+	 * (array('title' => ..., 'description' => ...)) al modelo nuevo
+	 * (array('html' => ...)), combinando ambos valores con el mismo
+	 * patrón que usan los defaults. No toca nada que ya esté en el
+	 * formato nuevo.
+	 */
+	private static function migrate_legacy( $saved ) {
+		if ( ! is_array( $saved ) ) {
+			return $saved;
+		}
+
+		foreach ( array( 'post_types', 'taxonomies' ) as $group ) {
+			if ( ! empty( $saved[ $group ] ) && is_array( $saved[ $group ] ) ) {
+				foreach ( $saved[ $group ] as $key => $entry ) {
+					$saved[ $group ][ $key ] = self::migrate_entry( $entry );
+				}
+			}
+		}
+
+		if ( isset( $saved['home'] ) ) {
+			$saved['home'] = self::migrate_entry( $saved['home'] );
+		}
+
+		if ( isset( $saved['author_archive'] ) ) {
+			$saved['author_archive'] = self::migrate_entry( $saved['author_archive'] );
+		}
+
+		return $saved;
+	}
+
+	private static function migrate_entry( $entry ) {
+		if ( is_array( $entry ) && ! isset( $entry['html'] ) && ( isset( $entry['title'] ) || isset( $entry['description'] ) ) ) {
+			$title = isset( $entry['title'] ) ? $entry['title'] : '';
+			$desc  = isset( $entry['description'] ) ? $entry['description'] : '';
+			return array( 'html' => self::default_html_block( $title, $desc ) );
+		}
+		return $entry;
+	}
+
 	private static function defaults() {
 		$post_types = array();
 		foreach ( self::public_post_types() as $pt ) {
 			$post_types[ $pt->name ] = array(
-				'title'       => '%title% %sep% %sitename%',
-				'description' => '%excerpt%',
+				'html' => self::default_html_block( '%title% %sep% %sitename%', '%excerpt%' ),
 			);
 		}
 
 		$taxonomies = array();
 		foreach ( self::public_taxonomies() as $tax ) {
 			$taxonomies[ $tax->name ] = array(
-				'title'       => '%term_title% %sep% %sitename%',
-				'description' => '%excerpt%',
+				'html' => self::default_html_block( '%term_title% %sep% %sitename%', '%excerpt%' ),
 			);
 		}
 
 		return array(
-			'separator'   => '-',
-			'live_output' => false,
-			'post_types'  => $post_types,
-			'taxonomies'  => $taxonomies,
-			'home'        => array(
-				'title'       => '%sitename% %sep% %sitedesc%',
-				'description' => '%sitedesc%',
+			'separator'      => '-',
+			'live_output'    => false,
+			'post_types'     => $post_types,
+			'taxonomies'     => $taxonomies,
+			'home'           => array(
+				'html' => self::default_html_block( '%sitename% %sep% %sitedesc%', '%sitedesc%' ),
 			),
 			'author_archive' => array(
-				'title'       => '%author_name% %sep% %sitename%',
-				'description' => '%excerpt%',
+				'html' => self::default_html_block( '%author_name% %sep% %sitename%', '%excerpt%' ),
 			),
 		);
 	}
@@ -150,29 +204,30 @@ class Cmdroom_Meta_Settings {
 		$opts['separator']   = isset( $_POST['separator'] ) ? sanitize_text_field( wp_unslash( $_POST['separator'] ) ) : '-';
 		$opts['live_output'] = ! empty( $_POST['live_output'] );
 
-		$opts['home']['title']       = isset( $_POST['home_title'] ) ? sanitize_text_field( wp_unslash( $_POST['home_title'] ) ) : $opts['home']['title'];
-		$opts['home']['description'] = isset( $_POST['home_description'] ) ? sanitize_text_field( wp_unslash( $_POST['home_description'] ) ) : $opts['home']['description'];
-
-		$opts['author_archive']['title']       = isset( $_POST['author_archive_title'] ) ? sanitize_text_field( wp_unslash( $_POST['author_archive_title'] ) ) : $opts['author_archive']['title'];
-		$opts['author_archive']['description'] = isset( $_POST['author_archive_description'] ) ? sanitize_text_field( wp_unslash( $_POST['author_archive_description'] ) ) : $opts['author_archive']['description'];
+		// Bloques de HTML crudo: guardado sin sanitizar de más (wp_kses_post
+		// destruiría un <script type="application/ld+json"> o un snippet de
+		// verificación si alguien lo mete a mano) -- es contenido de admin de
+		// confianza, mismo criterio que el módulo de inyección de código
+		// (includes/code-injection/class-code-injection.php), y ya está
+		// detrás de manage_options + nonce.
+		if ( isset( $_POST['home_html'] ) ) {
+			$opts['home']['html'] = wp_unslash( $_POST['home_html'] );
+		}
+		if ( isset( $_POST['author_archive_html'] ) ) {
+			$opts['author_archive']['html'] = wp_unslash( $_POST['author_archive_html'] );
+		}
 
 		foreach ( self::public_post_types() as $pt ) {
-			$key = 'pt_' . $pt->name;
-			if ( isset( $_POST[ $key . '_title' ] ) ) {
-				$opts['post_types'][ $pt->name ]['title'] = sanitize_text_field( wp_unslash( $_POST[ $key . '_title' ] ) );
-			}
-			if ( isset( $_POST[ $key . '_description' ] ) ) {
-				$opts['post_types'][ $pt->name ]['description'] = sanitize_text_field( wp_unslash( $_POST[ $key . '_description' ] ) );
+			$key = 'pt_' . $pt->name . '_html';
+			if ( isset( $_POST[ $key ] ) ) {
+				$opts['post_types'][ $pt->name ]['html'] = wp_unslash( $_POST[ $key ] );
 			}
 		}
 
 		foreach ( self::public_taxonomies() as $tax ) {
-			$key = 'tax_' . $tax->name;
-			if ( isset( $_POST[ $key . '_title' ] ) ) {
-				$opts['taxonomies'][ $tax->name ]['title'] = sanitize_text_field( wp_unslash( $_POST[ $key . '_title' ] ) );
-			}
-			if ( isset( $_POST[ $key . '_description' ] ) ) {
-				$opts['taxonomies'][ $tax->name ]['description'] = sanitize_text_field( wp_unslash( $_POST[ $key . '_description' ] ) );
+			$key = 'tax_' . $tax->name . '_html';
+			if ( isset( $_POST[ $key ] ) ) {
+				$opts['taxonomies'][ $tax->name ]['html'] = wp_unslash( $_POST[ $key ] );
 			}
 		}
 
@@ -183,30 +238,27 @@ class Cmdroom_Meta_Settings {
 	}
 
 	/**
-	 * Imprime una tabla form-table de plantillas título/descripción para un
-	 * listado de post types u objetos-taxonomía (misma forma: ->name y
-	 * ->labels->name), usado por cada pestaña de tipos de contenido.
+	 * Imprime una tabla form-table con un único textarea de bloque HTML por
+	 * elemento, para un listado de post types u objetos-taxonomía (misma
+	 * forma: ->name y ->labels->name), usado por cada pestaña de tipos de
+	 * contenido.
 	 *
-	 * @param array  $objects     Post types o taxonomías (objetos con ->name y ->labels->name).
-	 * @param string $group       'post_types' o 'taxonomies' — qué rama de $opts leer.
-	 * @param string $field_prefix 'pt' o 'tax' — prefijo de los names de los inputs (compatibilidad con handle_save()).
-	 * @param array  $opts        Opciones actuales.
+	 * @param array  $objects      Post types o taxonomías (objetos con ->name y ->labels->name).
+	 * @param string $group        'post_types' o 'taxonomies' -- qué rama de $opts leer.
+	 * @param string $field_prefix 'pt' o 'tax' -- prefijo de los names de los inputs (compatibilidad con handle_save()).
+	 * @param array  $opts         Opciones actuales.
 	 */
 	private static function render_group_table( $objects, $group, $field_prefix, $opts ) {
 		?>
 		<table class="form-table">
 			<?php foreach ( $objects as $object ) :
-				$tpl = $opts[ $group ][ $object->name ] ?? array(
-					'title'       => '',
-					'description' => '',
-				);
+				$tpl = $opts[ $group ][ $object->name ] ?? array( 'html' => '' );
 				$key = $field_prefix . '_' . $object->name;
 				?>
 				<tr>
 					<th><?php echo esc_html( $object->labels->name ); ?></th>
 					<td>
-						<input type="text" name="<?php echo esc_attr( $key ); ?>_title" value="<?php echo esc_attr( $tpl['title'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de título', 'command-room' ); ?>" /><br />
-						<input type="text" name="<?php echo esc_attr( $key ); ?>_description" value="<?php echo esc_attr( $tpl['description'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de descripción', 'command-room' ); ?>" />
+						<textarea name="<?php echo esc_attr( $key ); ?>_html" class="large-text code" rows="4"><?php echo esc_textarea( $tpl['html'] ); ?></textarea>
 					</td>
 				</tr>
 			<?php endforeach; ?>
@@ -229,14 +281,14 @@ class Cmdroom_Meta_Settings {
 		$page_slug  = 'cmdroom-metas';
 		?>
 		<div class="wrap cmdroom-wrap">
-			<h1><?php esc_html_e( 'Metas — plantillas por tipo de contenido', 'command-room' ); ?></h1>
+			<h1><?php esc_html_e( 'Metas — bloque de <head> por tipo de contenido', 'command-room' ); ?></h1>
 
 			<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
 				<div class="notice notice-success"><p><?php esc_html_e( 'Ajustes guardados.', 'command-room' ); ?></p></div>
 			<?php endif; ?>
 
 			<p>
-				<?php esc_html_e( 'Variables disponibles:', 'command-room' ); ?>
+				<?php esc_html_e( 'Cada bloque se imprime literalmente, tal cual, como parte del <head> -- escribe <title> y <meta name="description"> a tu gusto. Variables disponibles:', 'command-room' ); ?>
 				<code>%title%</code> <code>%sitename%</code> <code>%sitedesc%</code> <code>%sep%</code>
 				<code>%excerpt%</code> <code>%category%</code> <code>%author_name%</code> <code>%date%</code>
 				<code>%currentyear%</code> <code>%page%</code> <code>%term_title%</code> <code>%term_description%</code>
@@ -271,8 +323,7 @@ class Cmdroom_Meta_Settings {
 						<tr>
 							<th><?php esc_html_e( 'Home', 'command-room' ); ?></th>
 							<td>
-								<input type="text" name="home_title" value="<?php echo esc_attr( $opts['home']['title'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de título', 'command-room' ); ?>" /><br />
-								<input type="text" name="home_description" value="<?php echo esc_attr( $opts['home']['description'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de descripción', 'command-room' ); ?>" />
+								<textarea name="home_html" class="large-text code" rows="4"><?php echo esc_textarea( $opts['home']['html'] ); ?></textarea>
 							</td>
 						</tr>
 					</table>
@@ -291,8 +342,7 @@ class Cmdroom_Meta_Settings {
 						<tr>
 							<th><?php esc_html_e( 'Página de autor', 'command-room' ); ?></th>
 							<td>
-								<input type="text" name="author_archive_title" value="<?php echo esc_attr( $opts['author_archive']['title'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de título', 'command-room' ); ?>" /><br />
-								<input type="text" name="author_archive_description" value="<?php echo esc_attr( $opts['author_archive']['description'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de descripción', 'command-room' ); ?>" />
+								<textarea name="author_archive_html" class="large-text code" rows="4"><?php echo esc_textarea( $opts['author_archive']['html'] ); ?></textarea>
 							</td>
 						</tr>
 					</table>

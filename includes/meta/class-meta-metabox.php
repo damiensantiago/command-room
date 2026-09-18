@@ -36,16 +36,21 @@ class Cmdroom_Meta_Metabox {
 		$noindex   = (bool) get_post_meta( $post->ID, '_cmdroom_noindex', true );
 		$nofollow  = (bool) get_post_meta( $post->ID, '_cmdroom_nofollow', true );
 
-		$template = Cmdroom_Meta_Settings::get_post_type_template( $post->post_type );
+		// El placeholder muestra el título/extracto REAL del post (lo que
+		// alimentaría Open Graph si se deja en blanco) -- ya no depende del
+		// bloque de <head> editable del tipo de contenido, que desde 0.10.0
+		// vive como un único textarea en Ajustes → Metas.
+		$vars = Cmdroom_Meta_Variables::get_vars( array( 'post' => $post ) );
 		?>
 		<p>
 			<label for="cmdroom_title"><strong><?php esc_html_e( 'Título SEO', 'command-room' ); ?></strong></label><br />
-			<input type="text" id="cmdroom_title" name="cmdroom_title" value="<?php echo esc_attr( $title ); ?>" class="widefat" placeholder="<?php echo esc_attr( Cmdroom_Meta_Variables::replace( $template['title'], array( 'post' => $post ) ) ); ?>" />
+			<input type="text" id="cmdroom_title" name="cmdroom_title" value="<?php echo esc_attr( $title ); ?>" class="widefat" placeholder="<?php echo esc_attr( isset( $vars['title'] ) ? $vars['title'] : '' ); ?>" />
 		</p>
 		<p>
 			<label for="cmdroom_description"><strong><?php esc_html_e( 'Meta descripción', 'command-room' ); ?></strong></label><br />
-			<textarea id="cmdroom_description" name="cmdroom_description" class="widefat" rows="3" placeholder="<?php echo esc_attr( Cmdroom_Meta_Variables::replace( $template['description'], array( 'post' => $post ) ) ); ?>"><?php echo esc_textarea( $desc ); ?></textarea>
+			<textarea id="cmdroom_description" name="cmdroom_description" class="widefat" rows="3" placeholder="<?php echo esc_attr( isset( $vars['excerpt'] ) ? $vars['excerpt'] : '' ); ?>"><?php echo esc_textarea( $desc ); ?></textarea>
 		</p>
+		<p class="description"><?php esc_html_e( 'Este override afecta a Open Graph/Twitter. El bloque de <title>/meta description que ve Google se controla en Ajustes → Metas, en la plantilla del tipo de contenido.', 'command-room' ); ?></p>
 		<p>
 			<label for="cmdroom_canonical"><strong><?php esc_html_e( 'URL canónica', 'command-room' ); ?></strong></label><br />
 			<input type="text" id="cmdroom_canonical" name="cmdroom_canonical" value="<?php echo esc_attr( $canonical ); ?>" class="widefat" placeholder="<?php echo esc_attr( get_permalink( $post ) ); ?>" />

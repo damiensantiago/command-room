@@ -48,47 +48,57 @@ class Cmdroom_Rankmath_Importer {
 			return array( 'imported' => false, 'reason' => 'No se encontró rank-math-options-titles.' );
 		}
 
+		// get_options() ya migra cualquier dato viejo (título/descripción
+		// separados) al bloque 'html' único -- partimos siempre de ahí para
+		// no reintroducir el formato antiguo al guardar.
 		$opts = Cmdroom_Meta_Settings::get_options();
 		$touched = array();
 
 		foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) {
 			$title_key = "pt_{$pt->name}_title";
 			$desc_key  = "pt_{$pt->name}_description";
-			if ( ! empty( $rm[ $title_key ] ) ) {
-				$opts['post_types'][ $pt->name ]['title'] = $rm[ $title_key ];
-				$touched[] = $pt->name . ' (título)';
-			}
-			if ( ! empty( $rm[ $desc_key ] ) ) {
-				$opts['post_types'][ $pt->name ]['description'] = $rm[ $desc_key ];
-				$touched[] = $pt->name . ' (descripción)';
+			if ( ! empty( $rm[ $title_key ] ) || ! empty( $rm[ $desc_key ] ) ) {
+				$opts['post_types'][ $pt->name ]['html'] = self::rankmath_block(
+					! empty( $rm[ $title_key ] ) ? $rm[ $title_key ] : '%title% %sep% %sitename%',
+					! empty( $rm[ $desc_key ] ) ? $rm[ $desc_key ] : '%excerpt%'
+				);
+				$touched[] = $pt->name . ' (bloque de <head>)';
 			}
 		}
 
 		foreach ( Cmdroom_Meta_Settings::public_taxonomies() as $tax ) {
 			$title_key = "tax_{$tax->name}_title";
 			$desc_key  = "tax_{$tax->name}_description";
-			if ( ! empty( $rm[ $title_key ] ) ) {
-				$opts['taxonomies'][ $tax->name ]['title'] = $rm[ $title_key ];
-				$touched[] = $tax->name . ' (título)';
-			}
-			if ( ! empty( $rm[ $desc_key ] ) ) {
-				$opts['taxonomies'][ $tax->name ]['description'] = $rm[ $desc_key ];
-				$touched[] = $tax->name . ' (descripción)';
+			if ( ! empty( $rm[ $title_key ] ) || ! empty( $rm[ $desc_key ] ) ) {
+				$opts['taxonomies'][ $tax->name ]['html'] = self::rankmath_block(
+					! empty( $rm[ $title_key ] ) ? $rm[ $title_key ] : '%term_title% %sep% %sitename%',
+					! empty( $rm[ $desc_key ] ) ? $rm[ $desc_key ] : '%excerpt%'
+				);
+				$touched[] = $tax->name . ' (bloque de <head>)';
 			}
 		}
 
-		if ( ! empty( $rm['homepage_title'] ) ) {
-			$opts['home']['title'] = $rm['homepage_title'];
-			$touched[] = 'home (título)';
-		}
-		if ( ! empty( $rm['homepage_description'] ) ) {
-			$opts['home']['description'] = $rm['homepage_description'];
-			$touched[] = 'home (descripción)';
+		if ( ! empty( $rm['homepage_title'] ) || ! empty( $rm['homepage_description'] ) ) {
+			$opts['home']['html'] = self::rankmath_block(
+				! empty( $rm['homepage_title'] ) ? $rm['homepage_title'] : '%sitename% %sep% %sitedesc%',
+				! empty( $rm['homepage_description'] ) ? $rm['homepage_description'] : '%sitedesc%'
+			);
+			$touched[] = 'home (bloque de <head>)';
 		}
 
 		update_option( Cmdroom_Meta_Settings::OPTION, $opts );
 
 		return array( 'imported' => true, 'campos' => $touched );
+	}
+
+	/**
+	 * Combina título+descripción de Rank Math en el formato de bloque único
+	 * que usa Command Room desde 0.10.0 -- mismo patrón que
+	 * Cmdroom_Meta_Settings::default_html_block() (no es pública, así que se
+	 * repite aquí en vez de acoplar los dos módulos).
+	 */
+	private static function rankmath_block( $title, $description ) {
+		return sprintf( "<title>%s</title>\n<meta name=\"description\" content=\"%s\" />", $title, $description );
 	}
 
 	private static function import_post_meta() {
