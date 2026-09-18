@@ -46,7 +46,7 @@ class Cmdroom_Meta_Settings {
 		if ( isset( $opts['post_types'][ $post_type ] ) ) {
 			return $opts['post_types'][ $post_type ];
 		}
-		return array( 'html' => self::default_html_block( '%title% %sep% %sitename%', '%excerpt%' ) );
+		return array( 'html' => self::default_meta_block( '%title% %sep% %sitename%', '%excerpt%', self::og_type_for_post_type( $post_type ) ) );
 	}
 
 	public static function get_taxonomy_template( $taxonomy ) {
@@ -54,7 +54,7 @@ class Cmdroom_Meta_Settings {
 		if ( isset( $opts['taxonomies'][ $taxonomy ] ) ) {
 			return $opts['taxonomies'][ $taxonomy ];
 		}
-		return array( 'html' => self::default_html_block( '%term_title% %sep% %sitename%', '%excerpt%' ) );
+		return array( 'html' => self::default_meta_block( '%term_title% %sep% %sitename%', '%excerpt%', 'website' ) );
 	}
 
 	public static function get_home_template() {
@@ -68,12 +68,63 @@ class Cmdroom_Meta_Settings {
 	}
 
 	/**
-	 * Formato por defecto del bloque de metas: <title> + meta description
-	 * en dos líneas. Es también el formato que produce la migración desde
-	 * el modelo viejo (título/descripción separados).
+	 * Formato corto de metas: <title> + meta description en dos líneas.
+	 * Usado ÚNICAMENTE por migrate_entry() para reformatear datos del
+	 * modelo viejo (pre-0.10.0, título/descripción como campos separados)
+	 * al modelo de bloque HTML -- es un reformateo 1:1 de lo que ya había,
+	 * no un valor "de fábrica" para elementos nuevos (eso es
+	 * default_meta_block() desde 0.11.0). No lo toques para añadir
+	 * keywords/robots/canonical/OG: inyectaría tokens nuevos en datos
+	 * migrados que el usuario nunca pidió.
 	 */
 	private static function default_html_block( $title, $description ) {
 		return sprintf( "<title>%s</title>\n<meta name=\"description\" content=\"%s\" />", $title, $description );
+	}
+
+	/**
+	 * Bloque de <head> completo por defecto desde 0.11.0: title,
+	 * description, keywords, robots, canonical + Open Graph + Twitter
+	 * Card, usando solo variables propias de Command Room -- nunca nada
+	 * específico de un sitio concreto (favicons, twitter:site fijo,
+	 * organization fijo...). Ese tipo de contenido estático y sitewide
+	 * pertenece al módulo 16 (Inyección de código, includes/code-injection/),
+	 * no a una plantilla por tipo de contenido.
+	 *
+	 * Es el valor que se usa SOLO para instalaciones/elementos que todavía
+	 * no se han guardado -- un bloque ya guardado (aunque sea el formato
+	 * corto de antes de 0.11.0) nunca se sobrescribe con esto; ver
+	 * get_options()/wp_parse_args() y el docblock de la clase.
+	 */
+	private static function default_meta_block( $title_expr, $desc_expr, $og_type ) {
+		return implode(
+			"\n",
+			array(
+				sprintf( '<title>%s</title>', $title_expr ),
+				sprintf( '<meta name="description" content="%s" />', $desc_expr ),
+				'<meta name="keywords" content="%keywords%" />',
+				'<meta name="robots" content="%robots%" />',
+				'<link rel="canonical" href="%url%" />',
+				sprintf( '<meta property="og:type" content="%s" />', $og_type ),
+				sprintf( '<meta property="og:title" content="%s" />', $title_expr ),
+				sprintf( '<meta property="og:description" content="%s" />', $desc_expr ),
+				'<meta property="og:site_name" content="%sitename%" />',
+				'<meta property="og:url" content="%url%" />',
+				'<meta property="og:image" content="%image%" />',
+				'<meta name="twitter:card" content="summary_large_image" />',
+				sprintf( '<meta name="twitter:title" content="%s" />', $title_expr ),
+				sprintf( '<meta name="twitter:description" content="%s" />', $desc_expr ),
+				'<meta name="twitter:image" content="%image%" />',
+			)
+		);
+	}
+
+	/**
+	 * og:type por defecto según el post type -- "article" para contenido
+	 * normal (posts y custom post types), "website" para páginas estáticas
+	 * ('page': About, Contacto, Cookies...), que no son artículos.
+	 */
+	private static function og_type_for_post_type( $post_type ) {
+		return 'page' === $post_type ? 'website' : 'article';
 	}
 
 	/**
@@ -120,14 +171,14 @@ class Cmdroom_Meta_Settings {
 		$post_types = array();
 		foreach ( self::public_post_types() as $pt ) {
 			$post_types[ $pt->name ] = array(
-				'html' => self::default_html_block( '%title% %sep% %sitename%', '%excerpt%' ),
+				'html' => self::default_meta_block( '%title% %sep% %sitename%', '%excerpt%', self::og_type_for_post_type( $pt->name ) ),
 			);
 		}
 
 		$taxonomies = array();
 		foreach ( self::public_taxonomies() as $tax ) {
 			$taxonomies[ $tax->name ] = array(
-				'html' => self::default_html_block( '%term_title% %sep% %sitename%', '%excerpt%' ),
+				'html' => self::default_meta_block( '%term_title% %sep% %sitename%', '%excerpt%', 'website' ),
 			);
 		}
 
@@ -137,10 +188,10 @@ class Cmdroom_Meta_Settings {
 			'post_types'     => $post_types,
 			'taxonomies'     => $taxonomies,
 			'home'           => array(
-				'html' => self::default_html_block( '%sitename% %sep% %sitedesc%', '%sitedesc%' ),
+				'html' => self::default_meta_block( '%sitename% %sep% %sitedesc%', '%sitedesc%', 'website' ),
 			),
 			'author_archive' => array(
-				'html' => self::default_html_block( '%author_name% %sep% %sitename%', '%excerpt%' ),
+				'html' => self::default_meta_block( '%author_name% %sep% %sitename%', '%excerpt%', 'website' ),
 			),
 		);
 	}
@@ -281,18 +332,22 @@ class Cmdroom_Meta_Settings {
 		$page_slug  = 'cmdroom-metas';
 		?>
 		<div class="wrap cmdroom-wrap">
-			<h1><?php esc_html_e( 'Metas — bloque de <head> por tipo de contenido', 'command-room' ); ?></h1>
+			<h1><?php esc_html_e( 'Metas — bloque de <head> completo por tipo de contenido', 'command-room' ); ?></h1>
 
 			<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
 				<div class="notice notice-success"><p><?php esc_html_e( 'Ajustes guardados.', 'command-room' ); ?></p></div>
 			<?php endif; ?>
 
 			<p>
-				<?php esc_html_e( 'Cada bloque se imprime literalmente, tal cual, como parte del <head> -- escribe <title> y <meta name="description"> a tu gusto. Variables disponibles:', 'command-room' ); ?>
+				<?php esc_html_e( 'Cada bloque se imprime literalmente, tal cual, en el <head> -- desde title/description hasta keywords, robots, canonical y los bloques completos de Open Graph y Twitter Card, todo editable a mano. Variables disponibles:', 'command-room' ); ?>
 				<code>%title%</code> <code>%sitename%</code> <code>%sitedesc%</code> <code>%sep%</code>
 				<code>%excerpt%</code> <code>%category%</code> <code>%author_name%</code> <code>%date%</code>
 				<code>%currentyear%</code> <code>%page%</code> <code>%term_title%</code> <code>%term_description%</code>
+				<code>%url%</code> <code>%robots%</code> <code>%image%</code> <code>%keywords%</code>
 				— <?php esc_html_e( 'ver el glosario completo en SEO → Variables.', 'command-room' ); ?>
+			</p>
+			<p class="description">
+				<?php esc_html_e( 'Cosas que no cambian por tipo de página (favicon, viewport, un nombre de organización fijo...) no van aquí -- para eso está SEO → Inyección de código, pensado para HTML/JS sitewide.', 'command-room' ); ?>
 			</p>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">

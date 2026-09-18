@@ -8,10 +8,43 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Sintaxis compatible con las variables más usadas de Rank Math
  * (%title%, %sep%, %sitename%, %excerpt%, %currentyear%, %category%...)
  * para que importar sus plantillas no requiera traducir nada.
+ *
+ * Desde 0.11.0 build_vars() es SIEMPRE la fuente en bruto (sin escapar) --
+ * la usan tanto el bloque de <head> editable de Metas como Datos
+ * estructurados (Cmdroom_Schema_Variables) y el placeholder del metabox, y
+ * cada uno decide su propio escapado en el punto de inserción (Schema ya
+ * hace su propio json_escape() sobre el valor en bruto; no le podemos
+ * entregar un valor pre-escapado con esc_attr() o le metería entidades HTML
+ * dentro del JSON-LD). El único sitio que escapa es replace(), y solo
+ * cuando se le pide explícitamente con $escape = true -- ver docblock de
+ * replace() más abajo.
  */
 class Cmdroom_Meta_Variables {
 
-	public static function replace( $template, $context = array() ) {
+	/**
+	 * Nombres de variable que son una URL (llevan esc_url() en vez de
+	 * esc_attr() cuando $escape = true).
+	 */
+	const URL_VARS = array( 'url', 'image', 'og_image' );
+
+	/**
+	 * @param string $template Plantilla con %variables%.
+	 * @param array  $context  Contexto (post/term/is_home/author...).
+	 * @param bool   $escape   Desde 0.11.0: si es true, cada variable se
+	 *                         escapa en el momento de sustituirse -- esc_url()
+	 *                         para %url%/%image%/%og_image%, esc_attr() para
+	 *                         el resto. Se activa solo al construir el
+	 *                         bloque de <head> editable (head_html), que
+	 *                         Damien puede pegar en cualquier sitio de un
+	 *                         HTML libre (dentro de un atributo, de un nodo
+	 *                         de texto, donde sea) -- sin esto, un título con
+	 *                         comillas rompería un content="...". Se deja en
+	 *                         false (comportamiento de siempre) para el resto
+	 *                         de usos internos (resolución de overrides,
+	 *                         Datos estructurados), que ya aplican su propio
+	 *                         escapado acorde a su formato de salida.
+	 */
+	public static function replace( $template, $context = array(), $escape = false ) {
 		$template = (string) $template;
 		if ( '' === trim( $template ) ) {
 			return '';
@@ -21,8 +54,15 @@ class Cmdroom_Meta_Variables {
 
 		$replaced = preg_replace_callback(
 			'/%([a-z_]+)%/',
-			function ( $matches ) use ( $vars ) {
-				return isset( $vars[ $matches[1] ] ) ? $vars[ $matches[1] ] : '';
+			function ( $matches ) use ( $vars, $escape ) {
+				if ( ! isset( $vars[ $matches[1] ] ) ) {
+					return '';
+				}
+				$value = $vars[ $matches[1] ];
+				if ( ! $escape ) {
+					return $value;
+				}
+				return in_array( $matches[1], Cmdroom_Meta_Variables::URL_VARS, true ) ? esc_url( $value ) : esc_attr( $value );
 			},
 			$template
 		);
@@ -56,6 +96,11 @@ class Cmdroom_Meta_Variables {
 			'sep'         => Cmdroom_Meta_Settings::get_separator(),
 			'currentyear' => date_i18n( 'Y' ),
 			'page'        => self::current_page_suffix(),
+			// Defaults -- se sobreescriben abajo según el contexto. Viven
+			// aquí para que un contexto sin rama propia (p. ej. un archivo
+			// de fecha, que no tiene plantilla de <head> en Metas) siga
+			// devolviendo claves válidas en vez de "no definida".
+			'keywords'    => '',
 		);
 
 		if ( $post instanceof WP_Post ) {
@@ -66,6 +111,32 @@ class Cmdroom_Meta_Variables {
 			$vars['author']       = $vars['author_name']; // alias: nombre de variable de Rank Math para el autor
 			$vars['date']         = get_the_date( '', $post );
 			$vars['category']     = self::get_primary_category_name( $post );
+
+			// %keywords%: tags del post: si no tiene, cae a su categoría
+			// principal -- así nunca sale vacío en un post con al menos
+			// una categoría asignada (todos los posts públicos la tienen).
+			$tags = get_the_terms( $post, 'post_tag' );
+			if ( $tags && ! is_wp_error( $tags ) ) {
+				$vars['keywords'] = implode( ', ', wp_list_pluck( $tags, 'name' ) );
+			} else {
+				$vars['keywords'] = $vars['category'];
+			}
+
+			// Override manual del metabox (0.11.0): si Damien rellenó
+			// título/descripción SEO para ESTE post, %title%/%excerpt%
+			// dentro de su bloque de <head> reflejan el override -- igual
+			// que ya hacía antes de que existiera el bloque HTML editable.
+			// resolve_for_post() es quien inyecta estas dos claves en el
+			// contexto, ya resueltas como texto plano (no como plantilla),
+			// así que aquí solo se copian -- no hay una segunda pasada de
+			// replace() ni riesgo de recursión.
+			if ( isset( $context['title_override'] ) && '' !== $context['title_override'] ) {
+				$vars['title'] = $context['title_override'];
+			}
+			if ( isset( $context['excerpt_override'] ) && '' !== $context['excerpt_override'] ) {
+				$vars['excerpt']      = $context['excerpt_override'];
+				$vars['excerpt_only'] = $context['excerpt_override'];
+			}
 		} elseif ( $term instanceof WP_Term ) {
 			$excerpt = wp_trim_words( wp_strip_all_tags( $term->description ), 30 );
 
@@ -76,6 +147,7 @@ class Cmdroom_Meta_Variables {
 			$vars['category']         = $term->name;
 			$vars['excerpt']          = $excerpt;
 			$vars['excerpt_only']     = $excerpt;
+			$vars['keywords']         = $term->name;
 		} elseif ( ! empty( $context['is_home'] ) ) {
 			$vars['title']        = get_bloginfo( 'name' );
 			$vars['excerpt']      = get_bloginfo( 'description' );
@@ -89,6 +161,30 @@ class Cmdroom_Meta_Variables {
 			$vars['excerpt']      = $bio;
 			$vars['excerpt_only'] = $bio;
 		}
+
+		// %url%: la canónica del contexto actual -- mismo cálculo que usa
+		// Cmdroom_Meta_Resolver para rellenar 'canonical' en el paquete de
+		// metas, centralizado ahí para que ambos no puedan divergir.
+		$vars['url'] = Cmdroom_Meta_Resolver::resolve_canonical_for_context( $context );
+
+		// %robots%: el directive final (noindex/nofollow), calculado con la
+		// MISMA lógica que antes vivía repartida entre el override manual
+		// del post y las reglas del módulo 18 (Archivos y taxonomías) --
+		// centralizada en Cmdroom_Meta_Resolver::resolve_robots_for_context()
+		// para que Meta_Output y este motor de variables nunca diverjan.
+		$robots         = Cmdroom_Meta_Resolver::resolve_robots_for_context( $context );
+		$vars['robots'] = $robots['directive'];
+
+		// %image% / %og_image%: la imagen destacada del post si existe.
+		// Decisión de diseño (documentada también en el resumen de sesión):
+		// si no hay imagen destacada -- o el contexto no es un post (home,
+		// término, autor) -- cae al logo del negocio configurado en Datos
+		// estructurados (Cmdroom_Schema_Settings::get_business()['logo']),
+		// para que og:image nunca salga vacío si se ha configurado un logo.
+		// Vacío si tampoco hay logo configurado.
+		$image             = Cmdroom_Meta_Resolver::get_og_image_for_context( $context );
+		$vars['image']     = $image;
+		$vars['og_image']  = $image;
 
 		return $vars;
 	}
@@ -141,6 +237,11 @@ class Cmdroom_Meta_Variables {
 			array( 'tag' => '%term_title%', 'label' => __( 'Nombre del término', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'El nombre de la categoría/etiqueta/término actual.', 'command-room' ) ),
 			array( 'tag' => '%term%', 'label' => __( 'Nombre del término (alias)', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'Igual que %term_title% — es el nombre de variable que usa Rank Math.', 'command-room' ) ),
 			array( 'tag' => '%term_description%', 'label' => __( 'Descripción del término', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'El texto de descripción que se ha escrito para la categoría/etiqueta.', 'command-room' ) ),
+			array( 'tag' => '%url%', 'label' => __( 'URL canónica', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'El permalink del post, la URL del término, la home, o el archivo del autor -- usa el override de canonical del metabox si existe. Pensada para <link rel="canonical"> y og:url.', 'command-room' ) ),
+			array( 'tag' => '%robots%', 'label' => __( 'Directive de robots', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Se resuelve a "index, follow" o "noindex, follow" (etc.) combinando el override del metabox con las reglas de Archivos y taxonomías (autor/fecha/paginación/términos vacíos) y la paginación. Pensada para <meta name="robots">.', 'command-room' ) ),
+			array( 'tag' => '%image%', 'label' => __( 'Imagen destacada', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'La imagen destacada del post. Si no hay (o el contexto no es un post), cae al logo del negocio de Datos estructurados; vacío si tampoco hay logo. Pensada para og:image/twitter:image.', 'command-room' ) ),
+			array( 'tag' => '%og_image%', 'label' => __( 'Imagen destacada (alias)', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Igual que %image% — es el nombre de variable que usa Rank Math.', 'command-room' ) ),
+			array( 'tag' => '%keywords%', 'label' => __( 'Palabras clave', 'command-room' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'En un post, sus etiquetas separadas por comas (si no tiene, su categoría principal). En un término, su propio nombre. Vacío en home/autor. Pensada para <meta name="keywords">.', 'command-room' ) ),
 		);
 	}
 }

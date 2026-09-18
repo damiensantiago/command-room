@@ -4,16 +4,27 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Imprime el bloque de <head> (título+descripción editables), canonical,
- * robots y Open Graph en wp_head -- pero SOLO si "Salida en el sitio" está
- * activado en Ajustes. Apagado por defecto para poder convivir con Rank Math
- * mientras se verifica cada plantilla, sin duplicar metas en las páginas de
- * dev.
+ * Imprime en wp_head el bloque de <head> editable ("head_html") calculado
+ * por Cmdroom_Meta_Resolver -- pero SOLO si "Salida en el sitio" está
+ * activado en Ajustes. Apagado por defecto para poder convivir con Rank
+ * Math mientras se verifica cada plantilla, sin duplicar metas en las
+ * páginas de dev.
+ *
+ * Desde 0.11.0 el bloque de <head> de cada elemento (Ajustes → Metas) ya
+ * cubre TODO -- title, description, keywords, robots, canonical y los
+ * bloques Open Graph/Twitter completos, usando %url%/%robots%/%image%/
+ * %keywords% -- así que esta clase deja de calcular e imprimir nada de eso
+ * por su cuenta. Antes de 0.11.0 canonical/robots/OG vivían aquí con su
+ * propia lógica dinámica (noindex de términos vacíos, paginación, etc.,
+ * módulo 18); ese cálculo no ha desaparecido, se ha movido a
+ * Cmdroom_Meta_Resolver::resolve_robots_for_context()/
+ * resolve_canonical_for_context(), que alimentan tanto el head_html (vía
+ * %robots%/%url%) como el resto del plugin.
  */
 class Cmdroom_Meta_Output {
 
 	public static function init() {
-		add_action( 'wp_head', array( __CLASS__, 'maybe_unhook_native_title' ), 0 );
+		add_action( 'wp_head', array( __CLASS__, 'maybe_unhook_native_tags' ), 0 );
 		add_action( 'wp_head', array( __CLASS__, 'print_meta_tags' ), 1 );
 	}
 
@@ -22,22 +33,27 @@ class Cmdroom_Meta_Output {
 	}
 
 	/**
-	 * El bloque de <head> editable puede traer su propio <title> con
-	 * formato arbitrario, así que ya no usamos el filtro
-	 * pre_get_document_title -- en su lugar quitamos el <title> nativo de
-	 * WordPress para que no salga duplicado.
+	 * El bloque de <head> editable trae su propio <title> (y, desde
+	 * 0.11.0, su propio <link rel="canonical">) con formato arbitrario, así
+	 * que hay que quitar los que imprime WordPress nativamente para no
+	 * duplicar:
 	 *
-	 * Limitación conocida: esto solo funciona en temas con soporte
-	 * "title-tag" (el estándar moderno, que es lo que engancha
-	 * _wp_render_title_tag() a wp_head con prioridad 1). Un tema que
-	 * imprima <title> a mano en header.php seguiría duplicando -- no se
-	 * resuelve aquí.
+	 *  - _wp_render_title_tag(): el <title>, colgado en wp_head con
+	 *    prioridad 1 (solo en temas con soporte "title-tag" -- el estándar
+	 *    moderno). Un tema que imprima <title> a mano en header.php seguiría
+	 *    duplicando -- no se resuelve aquí.
+	 *  - rel_canonical(): el <link rel="canonical">, colgado en wp_head con
+	 *    prioridad 10. Ya duplicaba contra el canonical que imprimía esta
+	 *    clase antes de 0.10.0; sigue existiendo el mismo duplicado ahora
+	 *    que canonical vive dentro del head_html (si Damien lo pone, que es
+	 *    lo que traen los defaults desde 0.11.0).
 	 */
-	public static function maybe_unhook_native_title() {
+	public static function maybe_unhook_native_tags() {
 		if ( ! self::is_active() ) {
 			return;
 		}
 		remove_action( 'wp_head', '_wp_render_title_tag', 1 );
+		remove_action( 'wp_head', 'rel_canonical' );
 	}
 
 	public static function print_meta_tags() {
@@ -54,110 +70,69 @@ class Cmdroom_Meta_Output {
 			// Bloque de admin de confianza -- se imprime tal cual, sin
 			// esc_html(), mismo criterio que el módulo de inyección de
 			// código (includes/code-injection/class-code-injection.php):
-			// permite <title>/<meta> con formato arbitrario, y deja la
-			// puerta abierta a que alguien meta JSON-LD/verificación a mano
-			// aquí sin que se lo destruyamos.
+			// permite <title>/<meta>/OG/Twitter con formato arbitrario. Las
+			// variables que trae dentro ya salieron escapadas de
+			// Cmdroom_Meta_Variables::replace() con $escape = true -- ver
+			// Cmdroom_Meta_Resolver::resolve_for_*().
 			echo $data['head_html'] . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput -- intencional, ver docblock de la clase
-		} else {
-			// Si el bloque se deja vacío (o el contexto no tiene plantilla
-			// propia, como los archivos de fecha), no dejamos la página sin
-			// metas -- mismo comportamiento que había antes del bloque
-			// editable.
-			if ( $data['title'] ) {
-				printf( '<title>%s</title>' . "\n", esc_html( $data['title'] ) );
-			}
-			if ( $data['description'] ) {
-				printf( '<meta name="description" content="%s" />' . "\n", esc_attr( $data['description'] ) );
-			}
+			return;
 		}
 
-		if ( $data['canonical'] ) {
-			printf( '<link rel="canonical" href="%s" />' . "\n", esc_url( $data['canonical'] ) );
+		// Red de seguridad: si el bloque se deja vacío (plantilla borrada
+		// por error, o un contexto sin plantilla propia como los archivos
+		// de fecha), no dejamos la página sin <title> -- pero ya no se
+		// reconstruye aquí todo el bloque viejo de canonical/robots/OG,
+		// sería redundante con lo que el bloque por defecto de cada
+		// elemento ya trae de fábrica (Cmdroom_Meta_Settings::defaults()).
+		if ( ! empty( $data['title'] ) ) {
+			printf( '<title>%s</title>' . "\n", esc_html( $data['title'] ) );
 		}
-
-		$robots   = array();
-		$robots[] = ! empty( $data['noindex'] ) ? 'noindex' : 'index';
-		$robots[] = ! empty( $data['nofollow'] ) ? 'nofollow' : 'follow';
-		printf( '<meta name="robots" content="%s" />' . "\n", esc_attr( implode( ', ', $robots ) ) );
-
-		printf( '<meta property="og:type" content="%s" />' . "\n", esc_attr( $data['og_type'] ) );
-		printf( '<meta property="og:title" content="%s" />' . "\n", esc_attr( $data['og_title'] ) );
-		if ( $data['og_desc'] ) {
-			printf( '<meta property="og:description" content="%s" />' . "\n", esc_attr( $data['og_desc'] ) );
-		}
-		printf( '<meta property="og:url" content="%s" />' . "\n", esc_url( $data['canonical'] ) );
-		if ( $data['og_image'] ) {
-			printf( '<meta property="og:image" content="%s" />' . "\n", esc_url( $data['og_image'] ) );
-		}
-		printf( '<meta name="twitter:card" content="%s" />' . "\n", esc_attr( $data['og_image'] ? 'summary_large_image' : 'summary' ) );
 	}
 
-	/**
-	 * Módulo 18 (Archivos y taxonomías): añade noindex de autor/fecha/
-	 * paginación/términos vacíos como condiciones extra sobre el mismo
-	 * paquete de metas, en vez de un sistema de robots meta paralelo.
-	 */
 	private static function resolve_current() {
-		$data = null;
-
 		if ( is_singular() ) {
-			$data = Cmdroom_Meta_Resolver::resolve_for_post( get_queried_object_id() );
-		} elseif ( is_category() || is_tag() || is_tax() ) {
-			$term = get_queried_object();
-			$data = Cmdroom_Meta_Resolver::resolve_for_term( $term );
-			if ( $data && self::archive_rule_enabled( 'noindex_empty_terms' ) && $term instanceof WP_Term && 0 === (int) $term->count ) {
-				$data['noindex'] = true;
-			}
-		} elseif ( is_front_page() || is_home() ) {
-			$data = Cmdroom_Meta_Resolver::resolve_for_home();
-		} elseif ( is_author() ) {
-			$data = Cmdroom_Meta_Resolver::resolve_for_author( get_queried_object() );
-			if ( $data && self::archive_rule_enabled( 'noindex_author' ) ) {
-				$data['noindex'] = true;
-			}
-		} elseif ( is_date() ) {
-			$data = self::resolve_for_generic_archive();
-			if ( self::archive_rule_enabled( 'noindex_date' ) ) {
-				$data['noindex'] = true;
-			}
+			return Cmdroom_Meta_Resolver::resolve_for_post( get_queried_object_id() );
 		}
 
-		if ( $data && self::is_paginated_request() && self::archive_rule_enabled( 'noindex_paginated' ) ) {
-			$data['noindex'] = true;
+		if ( is_category() || is_tag() || is_tax() ) {
+			return Cmdroom_Meta_Resolver::resolve_for_term( get_queried_object() );
 		}
 
-		return $data;
-	}
-
-	private static function archive_rule_enabled( $rule ) {
-		return class_exists( 'Cmdroom_Archive_Optimization_Settings' ) && Cmdroom_Archive_Optimization_Settings::is_enabled( $rule );
-	}
-
-	private static function is_paginated_request() {
-		$paged = (int) get_query_var( 'paged' );
-		if ( ! $paged ) {
-			$paged = (int) get_query_var( 'page' );
+		if ( is_front_page() || is_home() ) {
+			return Cmdroom_Meta_Resolver::resolve_for_home();
 		}
-		return $paged > 1;
+
+		if ( is_author() ) {
+			return Cmdroom_Meta_Resolver::resolve_for_author( get_queried_object() );
+		}
+
+		if ( is_date() ) {
+			return self::resolve_for_generic_archive();
+		}
+
+		return null;
 	}
 
 	/**
 	 * Paquete de metas mínimo para archivos de fecha -- no tienen plantilla
-	 * propia en el módulo de Metas, así que se usa el título nativo de
-	 * WordPress para esos archivos como base. Sin 'head_html': cae siempre
-	 * en el fallback de print_meta_tags().
+	 * propia en el módulo de Metas, así que no hay 'head_html' y
+	 * print_meta_tags() cae siempre en el fallback de solo-título. El
+	 * robots sigue calculándose con la misma regla centralizada del módulo
+	 * 18 (noindex_date) por si algún día se decide darle plantilla propia.
 	 */
 	private static function resolve_for_generic_archive() {
 		$title = wp_strip_all_tags( get_the_archive_title() );
 		global $wp;
 		$canonical = home_url( add_query_arg( array(), $wp->request ) );
+		$robots    = Cmdroom_Meta_Resolver::resolve_robots_for_context( array( 'is_date' => true ) );
 
 		return array(
 			'title'       => $title,
 			'description' => '',
+			'head_html'   => '',
 			'canonical'   => $canonical,
-			'noindex'     => false,
-			'nofollow'    => false,
+			'noindex'     => $robots['noindex'],
+			'nofollow'    => $robots['nofollow'],
 			'og_type'     => 'website',
 			'og_title'    => $title,
 			'og_desc'     => '',

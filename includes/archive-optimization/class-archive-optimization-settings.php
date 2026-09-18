@@ -6,8 +6,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Reglas de noindex para archivos/taxonomías de bajo valor SEO: autor,
  * fecha, paginaciones y términos vacíos. Solo guarda la configuración —
- * quien decide e imprime el meta robots real es Cmdroom_Meta_Output
- * (módulo de Metas), para no montar un sistema paralelo de robots meta.
+ * quien decide el meta robots real es Cmdroom_Meta_Resolver::resolve_robots_for_context()
+ * (módulo de Metas), que combina estas reglas con el override manual del
+ * post; el resultado sale impreso dentro del bloque de <head> editable
+ * (vía %robots%), no como un <meta name="robots"> aparte — así se evita un
+ * sistema paralelo de robots meta.
  */
 class Cmdroom_Archive_Optimization_Settings {
 

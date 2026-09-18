@@ -50,7 +50,7 @@ class Cmdroom_Meta_Metabox {
 			<label for="cmdroom_description"><strong><?php esc_html_e( 'Meta descripción', 'command-room' ); ?></strong></label><br />
 			<textarea id="cmdroom_description" name="cmdroom_description" class="widefat" rows="3" placeholder="<?php echo esc_attr( isset( $vars['excerpt'] ) ? $vars['excerpt'] : '' ); ?>"><?php echo esc_textarea( $desc ); ?></textarea>
 		</p>
-		<p class="description"><?php esc_html_e( 'Este override afecta a Open Graph/Twitter. El bloque de <title>/meta description que ve Google se controla en Ajustes → Metas, en la plantilla del tipo de contenido.', 'command-room' ); ?></p>
+		<p class="description"><?php esc_html_e( 'Desde 0.11.0: si rellenas esto, %title%/%excerpt% dentro del bloque de <head> de ESTE post (Ajustes → Metas) usan este override en vez del título/extracto real -- el resto del bloque (keywords, robots, canonical, OG, Twitter) sigue viniendo de la plantilla del tipo de contenido.', 'command-room' ); ?></p>
 		<p>
 			<label for="cmdroom_canonical"><strong><?php esc_html_e( 'URL canónica', 'command-room' ); ?></strong></label><br />
 			<input type="text" id="cmdroom_canonical" name="cmdroom_canonical" value="<?php echo esc_attr( $canonical ); ?>" class="widefat" placeholder="<?php echo esc_attr( get_permalink( $post ) ); ?>" />
