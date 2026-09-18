@@ -44,15 +44,20 @@ class Cmdroom_Redirect_Admin {
 				continue;
 			}
 
+			$redirect_type = isset( $row['redirect_type'] ) ? absint( $row['redirect_type'] ) : 301;
+			$is_gone       = in_array( $redirect_type, array( 410, 451 ), true );
+
 			$data = array(
 				'source'         => $source,
 				'source_type'    => ( isset( $row['source_type'] ) && 'regex' === $row['source_type'] ) ? 'regex' : 'exact',
-				'destination'    => isset( $row['destination'] ) ? esc_url_raw( $row['destination'] ) : '',
-				'redirect_type'  => isset( $row['redirect_type'] ) ? absint( $row['redirect_type'] ) : 301,
+				// 410/451 no redirigen a ningún sitio: no hay destino real,
+				// se guarda un guion para dejar constancia visual en la tabla.
+				'destination'    => $is_gone ? '—' : ( isset( $row['destination'] ) ? esc_url_raw( $row['destination'] ) : '' ),
+				'redirect_type'  => $redirect_type,
 				'status'         => ! empty( $row['enabled'] ) ? 1 : 0,
 			);
 
-			if ( '' === $data['destination'] ) {
+			if ( ! $is_gone && '' === $data['destination'] ) {
 				continue; // sin destino no hay redirección válida
 			}
 
@@ -125,10 +130,10 @@ class Cmdroom_Redirect_Admin {
 										<option value="regex" <?php selected( $r['source_type'], 'regex' ); ?>><?php esc_html_e( 'Regex', 'command-room' ); ?></option>
 									</select>
 								</td>
-								<td><input type="text" name="redirects[<?php echo (int) $r['id']; ?>][destination]" value="<?php echo esc_attr( $r['destination'] ); ?>" class="regular-text" /></td>
+								<td><input type="text" name="redirects[<?php echo (int) $r['id']; ?>][destination]" value="<?php echo esc_attr( '—' === $r['destination'] ? '' : $r['destination'] ); ?>" class="regular-text" placeholder="<?php echo in_array( (int) $r['redirect_type'], array( 410, 451 ), true ) ? esc_attr__( 'No aplica (410/451)', 'command-room' ) : ''; ?>" /></td>
 								<td>
 									<select name="redirects[<?php echo (int) $r['id']; ?>][redirect_type]">
-										<?php foreach ( array( 301, 302, 307 ) as $code ) : ?>
+										<?php foreach ( array( 301, 302, 307, 410, 451 ) as $code ) : ?>
 											<option value="<?php echo esc_attr( $code ); ?>" <?php selected( (int) $r['redirect_type'], $code ); ?>><?php echo esc_html( $code ); ?></option>
 										<?php endforeach; ?>
 									</select>
@@ -152,6 +157,8 @@ class Cmdroom_Redirect_Admin {
 										<option value="301">301</option>
 										<option value="302">302</option>
 										<option value="307">307</option>
+										<option value="410">410 — Gone</option>
+										<option value="451">451 — Legal</option>
 									</select>
 								</td>
 								<td>—</td>
@@ -199,6 +206,36 @@ class Cmdroom_Redirect_Admin {
 				<?php else : ?>
 					<p><?php esc_html_e( 'Sin coincidencia: esa ruta no redirige a ningún sitio.', 'command-room' ); ?></p>
 				<?php endif; ?>
+			<?php endif; ?>
+
+			<hr />
+
+			<h2><?php esc_html_e( 'Historial reciente', 'command-room' ); ?></h2>
+			<p class="description"><?php esc_html_e( 'Últimos 20 disparos, con la ruta exacta solicitada y el código HTTP servido en ese momento — útil para reglas regex, donde una misma fila responde a rutas distintas.', 'command-room' ); ?></p>
+			<?php $recent = Cmdroom_Redirect_Table::get_recent_hits( 20 ); ?>
+			<?php if ( $recent ) : ?>
+				<table class="widefat striped" style="max-width:900px;">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Fecha', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Ruta solicitada', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Regla (origen)', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'HTTP', 'command-room' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( $recent as $hit ) : ?>
+							<tr>
+								<td><?php echo esc_html( $hit['hit_at'] ); ?></td>
+								<td><code><?php echo esc_html( $hit['requested_path'] ); ?></code></td>
+								<td><code><?php echo esc_html( $hit['source'] ?? '—' ); ?></code></td>
+								<td><?php echo esc_html( $hit['status_code'] ); ?></td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php else : ?>
+				<p class="description"><?php esc_html_e( 'Todavía no se ha disparado ninguna redirección.', 'command-room' ); ?></p>
 			<?php endif; ?>
 		</div>
 		<?php
