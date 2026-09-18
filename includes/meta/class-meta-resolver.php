@@ -266,10 +266,16 @@ class Cmdroom_Meta_Resolver {
 			$noindex = true;
 		}
 
+		// max-image-preview:large: la misma directiva que traía por defecto
+		// el <meta name="robots"> nativo de WordPress (wp_robots(), WP 5.7+)
+		// que se silenció en Cmdroom_Meta_Output -- no era solo "ruido
+		// duplicado", era una directiva real (recomendada por Google para
+		// que las imágenes se puedan mostrar a tamaño completo en
+		// resultados de búsqueda). Se conserva aquí para no perderla.
 		return array(
 			'noindex'   => $noindex,
 			'nofollow'  => $nofollow,
-			'directive' => ( $noindex ? 'noindex' : 'index' ) . ', ' . ( $nofollow ? 'nofollow' : 'follow' ),
+			'directive' => ( $noindex ? 'noindex' : 'index' ) . ', ' . ( $nofollow ? 'nofollow' : 'follow' ) . ', max-image-preview:large',
 		);
 	}
 

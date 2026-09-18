@@ -119,6 +119,71 @@ class Cmdroom_Meta_Settings {
 	}
 
 	/**
+	 * Bloque de <head> específico para Home -- pedido por Damien el
+	 * 2026-09-18 a partir de un ejemplo real (MARCA.com), con las variables
+	 * de Command Room en vez del contenido fijo de ese ejemplo. Solo se usa
+	 * en defaults()['home'] -- el resto de pestañas (Contenido, Páginas
+	 * corporativas, Categorías, Tags, Página de autor) siguen con
+	 * default_meta_block(), sin estos añadidos.
+	 *
+	 * Diferencias deliberadas respecto al ejemplo:
+	 *  - Sin los atributos `data-ue-c`/`data-ue-u` del <title> -- son de un
+	 *    editor visual propio de ese sitio, no significan nada aquí.
+	 *  - Sin `article:section`/`article:modified_time`/`og:updated_time` --
+	 *    son propiedades del namespace `article:` de Open Graph, y esta
+	 *    plantilla usa `og:type="website"` (la Home no es un artículo); no
+	 *    tiene sentido mezclar ambos vocabularios.
+	 *  - Sin favicons (`<link rel="icon">` etc.) -- WordPress ya los imprime
+	 *    solo si hay un Site Icon configurado (Ajustes → General); añadirlos
+	 *    aquí a mano los duplicaría exactamente igual que pasó con el
+	 *    <title>/canonical/robots nativos. Si no hay Site Icon puesto, se
+	 *    configura ahí, no en Metas.
+	 *  - Sin `<meta name="viewport">` ni el `<meta http-equiv="Content-Type">`
+	 *    de charset -- probado en vivo el 2026-09-18 y AMBOS salían
+	 *    duplicados contra lo que ya imprime WordPress/el tema por su cuenta
+	 *    (viewport literal, y un `<meta charset>` nativo distinto en forma
+	 *    pero con el mismo propósito). Se dejan fuera para no repetir el
+	 *    mismo tipo de bug que el <title>/canonical/robots nativos. `%charset%`
+	 *    sigue existiendo como variable por si se necesita en otro sitio sin
+	 *    ese `<meta charset>` nativo.
+	 *  - `fb:app_id`/`twitter:site`/`twitter:creator` van comentados: son
+	 *    valores fijos de cuenta (el ID de una app de Facebook, el @handle
+	 *    de Twitter/X) que no tienen una variable equivalente -- Damien
+	 *    descomenta y rellena si aplica.
+	 */
+	private static function default_home_block() {
+		return implode(
+			"\n",
+			array(
+				'<meta http-equiv="X-UA-Compatible" content="IE=edge;chrome=1" />',
+				'<title>%sitename% %sep% %sitedesc%</title>',
+				'<meta name="title" content="%sitename% %sep% %sitedesc%" />',
+				'<meta name="description" content="%sitedesc%" />',
+				'<meta name="keywords" content="%keywords%" />',
+				'<meta name="news_keywords" content="%keywords%" />',
+				'<meta name="robots" content="%robots%" />',
+				'<meta name="organization" content="%organization%" />',
+				'<link rel="canonical" href="%url%" />',
+				'<meta property="og:type" content="website" />',
+				'<meta property="og:title" content="%sitename% %sep% %sitedesc%" />',
+				'<meta property="og:description" content="%sitedesc%" />',
+				'<meta property="og:site_name" content="%sitename%" />',
+				'<meta property="og:url" content="%url%" />',
+				'<meta property="og:image" content="%image%" />',
+				'<!-- fb:app_id: pon aquí el App ID de Facebook si tienes uno registrado -->',
+				'<!-- <meta property="fb:app_id" content="" /> -->',
+				'<meta name="twitter:card" content="summary_large_image" />',
+				'<!-- twitter:site / twitter:creator: el @handle de la cuenta en X/Twitter -->',
+				'<!-- <meta name="twitter:site" content="" /> -->',
+				'<!-- <meta name="twitter:creator" content="" /> -->',
+				'<meta name="twitter:title" content="%sitename% %sep% %sitedesc%" />',
+				'<meta name="twitter:description" content="%sitedesc%" />',
+				'<meta name="twitter:image" content="%image%" />',
+			)
+		);
+	}
+
+	/**
 	 * og:type por defecto según el post type -- "article" para contenido
 	 * normal (posts y custom post types), "website" para páginas estáticas
 	 * ('page': About, Contacto, Cookies...), que no son artículos.
@@ -188,7 +253,7 @@ class Cmdroom_Meta_Settings {
 			'post_types'     => $post_types,
 			'taxonomies'     => $taxonomies,
 			'home'           => array(
-				'html' => self::default_meta_block( '%sitename% %sep% %sitedesc%', '%sitedesc%', 'website' ),
+				'html' => self::default_home_block(),
 			),
 			'author_archive' => array(
 				'html' => self::default_meta_block( '%author_name% %sep% %sitename%', '%excerpt%', 'website' ),

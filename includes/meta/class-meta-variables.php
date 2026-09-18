@@ -91,11 +91,22 @@ class Cmdroom_Meta_Variables {
 		$author = isset( $context['author'] ) ? $context['author'] : null;
 
 		$vars = array(
-			'sitename'    => get_bloginfo( 'name' ),
-			'sitedesc'    => get_bloginfo( 'description' ),
-			'sep'         => Cmdroom_Meta_Settings::get_separator(),
-			'currentyear' => date_i18n( 'Y' ),
-			'page'        => self::current_page_suffix(),
+			'sitename'     => get_bloginfo( 'name' ),
+			'sitedesc'     => get_bloginfo( 'description' ),
+			'sep'          => Cmdroom_Meta_Settings::get_separator(),
+			'currentyear'  => date_i18n( 'Y' ),
+			'page'         => self::current_page_suffix(),
+			// %charset%: el charset real del sitio (99% de las veces UTF-8),
+			// para el <meta http-equiv="Content-Type"> que algunos sitios
+			// siguen incluyendo por compatibilidad -- WordPress ya imprime su
+			// propio <meta charset> nativo, este token es solo para quien
+			// quiera un segundo tag http-equiv explícito en su bloque.
+			'charset'      => get_bloginfo( 'charset' ),
+			// %organization%: el nombre legal/de negocio de Datos
+			// estructurados (Ajustes → Datos estructurados → Negocio), NO
+			// necesariamente igual a %sitename% (p. ej. "Dripbase, S.L." vs
+			// "DripBase"). Cae a %sitename% si no hay negocio configurado.
+			'organization' => self::get_organization_name(),
 			// Defaults -- se sobreescriben abajo según el contexto. Viven
 			// aquí para que un contexto sin rama propia (p. ej. un archivo
 			// de fecha, que no tiene plantilla de <head> en Metas) siga
@@ -215,6 +226,16 @@ class Cmdroom_Meta_Variables {
 		return sprintf( __( 'Página %d', 'command-room' ), $paged );
 	}
 
+	private static function get_organization_name() {
+		if ( class_exists( 'Cmdroom_Schema_Settings' ) ) {
+			$business = Cmdroom_Schema_Settings::get_business();
+			if ( ! empty( $business['name'] ) ) {
+				return $business['name'];
+			}
+		}
+		return get_bloginfo( 'name' );
+	}
+
 	/**
 	 * Catálogo de variables soportadas — fuente única de verdad para el
 	 * glosario en el admin. Si se añade una variable a build_vars(), hay
@@ -238,7 +259,9 @@ class Cmdroom_Meta_Variables {
 			array( 'tag' => '%term%', 'label' => __( 'Nombre del término (alias)', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'Igual que %term_title% — es el nombre de variable que usa Rank Math.', 'command-room' ) ),
 			array( 'tag' => '%term_description%', 'label' => __( 'Descripción del término', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'El texto de descripción que se ha escrito para la categoría/etiqueta.', 'command-room' ) ),
 			array( 'tag' => '%url%', 'label' => __( 'URL canónica', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'El permalink del post, la URL del término, la home, o el archivo del autor -- usa el override de canonical del metabox si existe. Pensada para <link rel="canonical"> y og:url.', 'command-room' ) ),
-			array( 'tag' => '%robots%', 'label' => __( 'Directive de robots', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Se resuelve a "index, follow" o "noindex, follow" (etc.) combinando el override del metabox con las reglas de Archivos y taxonomías (autor/fecha/paginación/términos vacíos) y la paginación. Pensada para <meta name="robots">.', 'command-room' ) ),
+			array( 'tag' => '%robots%', 'label' => __( 'Directive de robots', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Se resuelve a "index, follow, max-image-preview:large" o "noindex, follow, max-image-preview:large" (etc.) combinando el override del metabox con las reglas de Archivos y taxonomías (autor/fecha/paginación/términos vacíos) y la paginación. Pensada para <meta name="robots">.', 'command-room' ) ),
+			array( 'tag' => '%charset%', 'label' => __( 'Charset del sitio', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Ajustes → General → Codificación (casi siempre UTF-8). WordPress ya imprime su propio <meta charset> nativo — este token es para quien quiera además un <meta http-equiv="Content-Type"> explícito.', 'command-room' ) ),
+			array( 'tag' => '%organization%', 'label' => __( 'Nombre de la organización', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'El nombre de negocio configurado en Datos estructurados → Negocio/Organización (puede ser distinto de %sitename%, p. ej. la razón social). Cae a %sitename% si no hay negocio configurado.', 'command-room' ) ),
 			array( 'tag' => '%image%', 'label' => __( 'Imagen destacada', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'La imagen destacada del post. Si no hay (o el contexto no es un post), cae al logo del negocio de Datos estructurados; vacío si tampoco hay logo. Pensada para og:image/twitter:image.', 'command-room' ) ),
 			array( 'tag' => '%og_image%', 'label' => __( 'Imagen destacada (alias)', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Igual que %image% — es el nombre de variable que usa Rank Math.', 'command-room' ) ),
 			array( 'tag' => '%keywords%', 'label' => __( 'Palabras clave', 'command-room' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'En un post, sus etiquetas separadas por comas (si no tiene, su categoría principal). En un término, su propio nombre. Vacío en home/autor. Pensada para <meta name="keywords">.', 'command-room' ) ),
