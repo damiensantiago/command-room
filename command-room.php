@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Command Room
  * Description: Suite de SEO propia (metas, datos estructurados, sitemaps y redirecciones por plantilla) para sustituir Rank Math en los sitios WordPress de Damien.
- * Version: 0.7.0
+ * Version: 0.8.0
  * Author: Damien Santiago
  * Text Domain: command-room
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMDROOM_VERSION', '0.7.0' );
+define( 'CMDROOM_VERSION', '0.8.0' );
 define( 'CMDROOM_FILE', __FILE__ );
 define( 'CMDROOM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMDROOM_URL', plugin_dir_url( __FILE__ ) );
@@ -37,11 +37,27 @@ require_once CMDROOM_DIR . 'includes/redirects/class-redirect-table.php';
 require_once CMDROOM_DIR . 'includes/redirects/class-redirect-admin.php';
 require_once CMDROOM_DIR . 'includes/redirects/class-redirect-matcher.php';
 require_once CMDROOM_DIR . 'includes/robots/class-robots-settings.php';
+require_once CMDROOM_DIR . 'includes/ai-bots/class-ai-bots-settings.php';
+require_once CMDROOM_DIR . 'includes/sitemap/class-sitemap-ping.php';
+require_once CMDROOM_DIR . 'includes/monitor404/class-404-table.php';
+require_once CMDROOM_DIR . 'includes/monitor404/class-404-monitor.php';
+require_once CMDROOM_DIR . 'includes/monitor404/class-404-admin.php';
+require_once CMDROOM_DIR . 'includes/code-injection/class-code-injection.php';
+require_once CMDROOM_DIR . 'includes/image-seo/class-image-seo-settings.php';
+require_once CMDROOM_DIR . 'includes/image-seo/class-image-seo.php';
+require_once CMDROOM_DIR . 'includes/archive-optimization/class-archive-optimization-settings.php';
+require_once CMDROOM_DIR . 'includes/breadcrumbs/class-breadcrumbs-jsonld.php';
+require_once CMDROOM_DIR . 'includes/cleanup/class-cleanup-settings.php';
+require_once CMDROOM_DIR . 'includes/cleanup/class-cleanup.php';
 
 /**
  * Fase 1 (Metas) + Fase 2 (Datos estructurados) + Fase 3 (Sitemaps) +
  * Fase 4 (Redirecciones), más las mejoras posteriores: glosario de
- * variables, sitemap de Google News y control de robots.txt.
+ * variables, sitemap de Google News y control de robots.txt. Y los 10
+ * módulos nuevos: bots de IA, sitemaps v2 (imágenes + ping), redirecciones
+ * v2 (regex + 410/451 + historial), monitor de 404, inyección de código,
+ * Auto-Image SEO, noindex de archivos, breadcrumbs JSON-LD globales y
+ * limpieza de cabeceras/permalinks.
  */
 function cmdroom_bootstrap() {
 	Cmdroom_Admin_Menu::init();
@@ -57,10 +73,22 @@ function cmdroom_bootstrap() {
 	Cmdroom_Sitemap_Settings::init();
 	Cmdroom_Sitemap_Render::init();
 	Cmdroom_Sitemap_Rewrite::init();
+	Cmdroom_Sitemap_Ping::init();
 	Cmdroom_Redirect_Table::init();
 	Cmdroom_Redirect_Admin::init();
 	Cmdroom_Redirect_Matcher::init();
 	Cmdroom_Robots_Settings::init();
+	Cmdroom_Ai_Bots_Settings::init();
+	Cmdroom_404_Table::init();
+	Cmdroom_404_Monitor::init();
+	Cmdroom_404_Admin::init();
+	Cmdroom_Code_Injection::init();
+	Cmdroom_Image_Seo_Settings::init();
+	Cmdroom_Image_Seo::init();
+	Cmdroom_Archive_Optimization_Settings::init();
+	Cmdroom_Breadcrumbs_Jsonld::init();
+	Cmdroom_Cleanup_Settings::init();
+	Cmdroom_Cleanup::init();
 }
 add_action( 'plugins_loaded', 'cmdroom_bootstrap' );
 

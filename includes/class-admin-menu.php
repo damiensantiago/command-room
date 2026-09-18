@@ -30,19 +30,29 @@ class Cmdroom_Admin_Menu {
 		);
 
 		$submenus = array(
-			'general'     => __( 'General', 'command-room' ),
-			'metas'       => __( 'Metas', 'command-room' ),
-			'variables'   => __( 'Variables', 'command-room' ),
-			'schema'      => __( 'Datos estructurados', 'command-room' ),
-			'breadcrumbs' => __( 'Breadcrumbs', 'command-room' ),
-			'sitemaps'    => __( 'Sitemaps', 'command-room' ),
-			'redirects'   => __( 'Redirecciones', 'command-room' ),
-			'robots'      => __( 'Robots.txt', 'command-room' ),
-			'tools'       => __( 'Herramientas', 'command-room' ),
+			'general'      => __( 'General', 'command-room' ),
+			'metas'        => __( 'Metas', 'command-room' ),
+			'variables'    => __( 'Variables', 'command-room' ),
+			'schema'       => __( 'Datos estructurados', 'command-room' ),
+			'archives'     => __( 'Archivos y taxonomías', 'command-room' ),
+			'breadcrumbs'  => __( 'Breadcrumbs', 'command-room' ),
+			'sitemaps'     => __( 'Sitemaps', 'command-room' ),
+			'redirects'    => __( 'Redirecciones', 'command-room' ),
+			'monitor404'   => __( 'Monitor 404', 'command-room' ),
+			'robots'       => __( 'Robots.txt', 'command-room' ),
+			'ai-bots'      => __( 'Bots de IA', 'command-room' ),
+			'code'         => __( 'Inyección de código', 'command-room' ),
+			'image-seo'    => __( 'Auto-Image SEO', 'command-room' ),
+			'cleanup'      => __( 'Limpieza HTTP/permalinks', 'command-room' ),
+			'tools'        => __( 'Herramientas', 'command-room' ),
 		);
 
 		foreach ( $submenus as $slug => $label ) {
 			$page_slug = 'general' === $slug ? self::SLUG : self::SLUG . '-' . $slug;
+			// Los slugs con guion (ai-bots, image-seo) no pueden ser sufijo
+			// de un nombre de método PHP: se traducen a guion bajo solo
+			// para resolver el callback, la URL de admin sigue con guion.
+			$method_slug = str_replace( '-', '_', $slug );
 
 			add_submenu_page(
 				self::SLUG,
@@ -50,7 +60,7 @@ class Cmdroom_Admin_Menu {
 				$label,
 				self::CAPABILITY,
 				$page_slug,
-				array( __CLASS__, 'render_' . $slug )
+				array( __CLASS__, 'render_' . $method_slug )
 			);
 		}
 	}
@@ -83,6 +93,10 @@ class Cmdroom_Admin_Menu {
 		Cmdroom_Schema_Settings::render_page();
 	}
 
+	public static function render_archives() {
+		Cmdroom_Archive_Optimization_Settings::render_page();
+	}
+
 	public static function render_breadcrumbs() {
 		Cmdroom_Breadcrumb_Settings::render_page();
 	}
@@ -97,6 +111,26 @@ class Cmdroom_Admin_Menu {
 
 	public static function render_robots() {
 		Cmdroom_Robots_Settings::render_page();
+	}
+
+	public static function render_monitor404() {
+		Cmdroom_404_Admin::render_page();
+	}
+
+	public static function render_ai_bots() {
+		Cmdroom_Ai_Bots_Settings::render_page();
+	}
+
+	public static function render_code() {
+		Cmdroom_Code_Injection::render_page();
+	}
+
+	public static function render_image_seo() {
+		Cmdroom_Image_Seo_Settings::render_page();
+	}
+
+	public static function render_cleanup() {
+		Cmdroom_Cleanup_Settings::render_page();
 	}
 
 	public static function render_tools() {
