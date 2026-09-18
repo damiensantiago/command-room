@@ -35,14 +35,17 @@ class Cmdroom_Schema_Output {
 	}
 
 	public static function resolve_current() {
+		// Mismo orden que Cmdroom_Meta_Output::resolve_current() y por la
+		// misma razón: una portada estática es is_singular() Y
+		// is_front_page() a la vez -- is_front_page() tiene que ir primero.
+		if ( is_front_page() || is_home() ) {
+			return Cmdroom_Schema_Builder::build_for_home();
+		}
 		if ( is_singular() ) {
 			return Cmdroom_Schema_Builder::build_for_post( get_queried_object_id() );
 		}
 		if ( is_category() || is_tag() || is_tax() ) {
 			return Cmdroom_Schema_Builder::build_for_term( get_queried_object() );
-		}
-		if ( is_front_page() || is_home() ) {
-			return Cmdroom_Schema_Builder::build_for_home();
 		}
 		if ( is_author() ) {
 			return Cmdroom_Schema_Builder::build_for_author( get_queried_object() );

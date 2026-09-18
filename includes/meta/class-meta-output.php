@@ -26,6 +26,7 @@ class Cmdroom_Meta_Output {
 	public static function init() {
 		add_action( 'wp_head', array( __CLASS__, 'maybe_unhook_native_tags' ), 0 );
 		add_action( 'wp_head', array( __CLASS__, 'print_meta_tags' ), 1 );
+		add_filter( 'wp_robots', array( __CLASS__, 'silence_native_robots' ), 9999 );
 	}
 
 	private static function is_active() {
@@ -47,6 +48,14 @@ class Cmdroom_Meta_Output {
 	 *    clase antes de 0.10.0; sigue existiendo el mismo duplicado ahora
 	 *    que canonical vive dentro del head_html (si Damien lo pone, que es
 	 *    lo que traen los defaults desde 0.11.0).
+	 *  - wp_robots(): WordPress 5.7+ imprime su propio <meta name="robots">
+	 *    nativo (por defecto solo trae `max-image-preview:large`) a través
+	 *    del filtro `wp_robots` -- nada que ver con Rank Math, sigue ahí
+	 *    aunque Rank Math esté desactivado. Detectado el 2026-09-18: salía
+	 *    duplicado junto al robots real del head_html. Se filtra a vacío en
+	 *    vez de con remove_action porque wp_robots() no cuelga como acción
+	 *    fija de core -- varios plugins añaden sus propios filtros al mismo
+	 *    array y quitar la acción entera se cargaría también esos.
 	 */
 	public static function maybe_unhook_native_tags() {
 		if ( ! self::is_active() ) {
@@ -54,6 +63,20 @@ class Cmdroom_Meta_Output {
 		}
 		remove_action( 'wp_head', '_wp_render_title_tag', 1 );
 		remove_action( 'wp_head', 'rel_canonical' );
+	}
+
+	/**
+	 * Vacía el array de robots nativo de WordPress core (filtro `wp_robots`)
+	 * para que `wp_robots()` no imprima nada -- el robots real ya viene
+	 * dentro del head_html. Hookeado en init() con prioridad muy alta para
+	 * ejecutarse después de cualquier otro filtro (Site Kit, etc.) y dejar
+	 * el array realmente vacío.
+	 */
+	public static function silence_native_robots( $robots ) {
+		if ( ! self::is_active() ) {
+			return $robots;
+		}
+		return array();
 	}
 
 	public static function print_meta_tags() {
@@ -90,16 +113,21 @@ class Cmdroom_Meta_Output {
 	}
 
 	private static function resolve_current() {
+		// is_front_page() va ANTES que is_singular(): una portada estática
+		// (show_on_front = 'page') es a la vez is_singular() Y is_front_page()
+		// -- si se comprobara is_singular() primero, la portada resolvería
+		// como una página normal (plantilla de "Páginas corporativas") en vez
+		// de como "Home", que es justo el caso que se rompía antes de esto.
+		if ( is_front_page() || is_home() ) {
+			return Cmdroom_Meta_Resolver::resolve_for_home();
+		}
+
 		if ( is_singular() ) {
 			return Cmdroom_Meta_Resolver::resolve_for_post( get_queried_object_id() );
 		}
 
 		if ( is_category() || is_tag() || is_tax() ) {
 			return Cmdroom_Meta_Resolver::resolve_for_term( get_queried_object() );
-		}
-
-		if ( is_front_page() || is_home() ) {
-			return Cmdroom_Meta_Resolver::resolve_for_home();
 		}
 
 		if ( is_author() ) {
