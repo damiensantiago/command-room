@@ -26,6 +26,7 @@ class Cmdroom_Schema_Settings {
 		'Article'     => 'Article',
 		'BlogPosting' => 'BlogPosting',
 		'Service'     => 'Service',
+		'ProfilePage' => 'ProfilePage',
 	);
 
 	public static function init() {
@@ -54,6 +55,11 @@ class Cmdroom_Schema_Settings {
 		return 'page' === $post_type ? 'WebPage' : 'Article';
 	}
 
+	public static function get_author_archive_schema() {
+		$opts = self::get_options();
+		return isset( $opts['author_archive'] ) ? $opts['author_archive'] : 'ProfilePage';
+	}
+
 	private static function defaults() {
 		$post_types = array();
 		foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) {
@@ -75,6 +81,7 @@ class Cmdroom_Schema_Settings {
 				'sameas'    => '',
 			),
 			'post_types'  => $post_types,
+			'author_archive' => 'ProfilePage',
 		);
 	}
 
@@ -101,6 +108,10 @@ class Cmdroom_Schema_Settings {
 			if ( isset( $_POST[ $key ] ) && array_key_exists( $_POST[ $key ], self::POST_TYPE_SCHEMA_TYPES ) ) {
 				$opts['post_types'][ $pt->name ] = sanitize_text_field( wp_unslash( $_POST[ $key ] ) );
 			}
+		}
+
+		if ( isset( $_POST['author_archive_schema'] ) && array_key_exists( $_POST['author_archive_schema'], self::POST_TYPE_SCHEMA_TYPES ) ) {
+			$opts['author_archive'] = sanitize_text_field( wp_unslash( $_POST['author_archive_schema'] ) );
 		}
 
 		update_option( self::OPTION, $opts );
@@ -164,27 +175,75 @@ class Cmdroom_Schema_Settings {
 				</table>
 
 				<h2><?php esc_html_e( 'Tipo de schema por tipo de contenido', 'command-room' ); ?></h2>
-				<table class="form-table">
-					<?php foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) :
-						$current = $opts['post_types'][ $pt->name ] ?? '';
-						?>
+
+				<?php
+				$schema_tabs = array(
+					'contenido'    => __( 'Contenido', 'command-room' ),
+					'corporativas' => __( 'Páginas corporativas', 'command-room' ),
+					'categorias'   => __( 'Categorías y Tags', 'command-room' ),
+					'autor'        => __( 'Página de autor', 'command-room' ),
+				);
+				$active_tab = Cmdroom_Admin_Menu::get_active_tab( $schema_tabs );
+				$page_slug  = 'cmdroom-schema';
+				Cmdroom_Admin_Menu::render_tab_nav( $schema_tabs, $active_tab, $page_slug );
+				?>
+
+				<div class="cmdroom-tab-panel" data-tab="contenido" <?php echo 'contenido' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<?php self::render_post_type_schema_table( Cmdroom_Meta_Settings::content_post_types(), $opts ); ?>
+				</div>
+
+				<div class="cmdroom-tab-panel" data-tab="corporativas" <?php echo 'corporativas' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<?php self::render_post_type_schema_table( Cmdroom_Meta_Settings::corporate_post_types(), $opts ); ?>
+				</div>
+
+				<div class="cmdroom-tab-panel" data-tab="categorias" <?php echo 'categorias' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<p class="description"><?php esc_html_e( 'Las categorías y etiquetas siempre usan CollectionPage — es lo que recomienda Google para archivos.', 'command-room' ); ?></p>
+				</div>
+
+				<div class="cmdroom-tab-panel" data-tab="autor" <?php echo 'autor' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<table class="form-table">
 						<tr>
-							<th><?php echo esc_html( $pt->labels->name ); ?></th>
+							<th><?php esc_html_e( 'Página de autor', 'command-room' ); ?></th>
 							<td>
-								<select name="pt_schema_<?php echo esc_attr( $pt->name ); ?>">
+								<select name="author_archive_schema">
 									<?php foreach ( self::POST_TYPE_SCHEMA_TYPES as $type => $label ) : ?>
-										<option value="<?php echo esc_attr( $type ); ?>" <?php selected( $current, $type ); ?>><?php echo esc_html( $label ); ?></option>
+										<option value="<?php echo esc_attr( $type ); ?>" <?php selected( $opts['author_archive'], $type ); ?>><?php echo esc_html( $label ); ?></option>
 									<?php endforeach; ?>
 								</select>
+								<p class="description"><?php esc_html_e( 'ProfilePage es el tipo recomendado por Schema.org para páginas de perfil/autor.', 'command-room' ); ?></p>
 							</td>
 						</tr>
-					<?php endforeach; ?>
-				</table>
-				<p class="description"><?php esc_html_e( 'Las categorías y etiquetas siempre usan CollectionPage — es lo que recomienda Google para archivos.', 'command-room' ); ?></p>
+					</table>
+				</div>
 
 				<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
 			</form>
 		</div>
+		<?php
+	}
+
+	/**
+	 * Tabla form-table de "tipo de schema" para un listado de post types,
+	 * compartida entre las pestañas Contenido y Páginas corporativas.
+	 */
+	private static function render_post_type_schema_table( $post_types, $opts ) {
+		?>
+		<table class="form-table">
+			<?php foreach ( $post_types as $pt ) :
+				$current = $opts['post_types'][ $pt->name ] ?? '';
+				?>
+				<tr>
+					<th><?php echo esc_html( $pt->labels->name ); ?></th>
+					<td>
+						<select name="pt_schema_<?php echo esc_attr( $pt->name ); ?>">
+							<?php foreach ( self::POST_TYPE_SCHEMA_TYPES as $type => $label ) : ?>
+								<option value="<?php echo esc_attr( $type ); ?>" <?php selected( $current, $type ); ?>><?php echo esc_html( $label ); ?></option>
+							<?php endforeach; ?>
+						</select>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
 		<?php
 	}
 }
