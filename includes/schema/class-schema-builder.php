@@ -188,7 +188,11 @@ class Cmdroom_Schema_Builder {
 		) );
 	}
 
-	private static function breadcrumb_node( $items ) {
+	/**
+	 * Pública porque el módulo 19 (breadcrumbs JSON-LD globales) la reutiliza
+	 * para no duplicar la forma del nodo BreadcrumbList en dos sitios.
+	 */
+	public static function breadcrumb_node( $items ) {
 		$list_items = array();
 		foreach ( $items as $i => $item ) {
 			$list_items[] = array(

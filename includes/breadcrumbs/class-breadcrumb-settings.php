@@ -23,13 +23,23 @@ class Cmdroom_Breadcrumb_Settings {
 
 	private static function defaults() {
 		return array(
-			'separator'      => '›',
-			'home_label'     => __( 'Inicio', 'command-room' ),
-			'show_home'      => true,
-			'bold_last'      => true,
-			'search_prefix'  => __( 'Resultados para:', 'command-room' ),
-			'label_404'      => __( 'Página no encontrada', 'command-room' ),
+			'separator'         => '›',
+			'home_label'        => __( 'Inicio', 'command-room' ),
+			'show_home'         => true,
+			'bold_last'         => true,
+			'search_prefix'     => __( 'Resultados para:', 'command-room' ),
+			'label_404'         => __( 'Página no encontrada', 'command-room' ),
+			// Módulo 19: JSON-LD global — apagado por defecto porque compite
+			// directamente con el BreadcrumbList de Rank Math (backlog SEO de
+			// Dripbase pide activarlo justo ahí); se enciende a mano cuando
+			// Rank Math deje de servirlo.
+			'jsonld_live_output' => false,
 		);
+	}
+
+	public static function is_jsonld_live_output_enabled() {
+		$opts = self::get_options();
+		return ! empty( $opts['jsonld_live_output'] );
 	}
 
 	public static function handle_save() {
@@ -39,12 +49,13 @@ class Cmdroom_Breadcrumb_Settings {
 		check_admin_referer( 'cmdroom_save_breadcrumbs' );
 
 		$opts = array(
-			'separator'     => isset( $_POST['separator'] ) ? sanitize_text_field( wp_unslash( $_POST['separator'] ) ) : '›',
-			'home_label'    => isset( $_POST['home_label'] ) ? sanitize_text_field( wp_unslash( $_POST['home_label'] ) ) : __( 'Inicio', 'command-room' ),
-			'show_home'     => ! empty( $_POST['show_home'] ),
-			'bold_last'     => ! empty( $_POST['bold_last'] ),
-			'search_prefix' => isset( $_POST['search_prefix'] ) ? sanitize_text_field( wp_unslash( $_POST['search_prefix'] ) ) : '',
-			'label_404'     => isset( $_POST['label_404'] ) ? sanitize_text_field( wp_unslash( $_POST['label_404'] ) ) : '',
+			'separator'          => isset( $_POST['separator'] ) ? sanitize_text_field( wp_unslash( $_POST['separator'] ) ) : '›',
+			'home_label'         => isset( $_POST['home_label'] ) ? sanitize_text_field( wp_unslash( $_POST['home_label'] ) ) : __( 'Inicio', 'command-room' ),
+			'show_home'          => ! empty( $_POST['show_home'] ),
+			'bold_last'          => ! empty( $_POST['bold_last'] ),
+			'search_prefix'      => isset( $_POST['search_prefix'] ) ? sanitize_text_field( wp_unslash( $_POST['search_prefix'] ) ) : '',
+			'label_404'          => isset( $_POST['label_404'] ) ? sanitize_text_field( wp_unslash( $_POST['label_404'] ) ) : '',
+			'jsonld_live_output' => ! empty( $_POST['jsonld_live_output'] ),
 		);
 
 		update_option( self::OPTION, $opts );
@@ -95,6 +106,15 @@ class Cmdroom_Breadcrumb_Settings {
 					<tr>
 						<th><label for="label_404"><?php esc_html_e( 'Etiqueta en 404', 'command-room' ); ?></label></th>
 						<td><input type="text" id="label_404" name="label_404" value="<?php echo esc_attr( $opts['label_404'] ); ?>" class="regular-text" /></td>
+					</tr>
+					<tr>
+						<th><?php esc_html_e( 'BreadcrumbList global (JSON-LD)', 'command-room' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="jsonld_live_output" value="1" <?php checked( $opts['jsonld_live_output'] ); ?> />
+								<?php esc_html_e( 'Inyectar el schema BreadcrumbList en TODAS las páginas (no solo donde se usa el shortcode) — déjalo apagado mientras Rank Math siga sirviendo su propio BreadcrumbList, para no duplicarlo.', 'command-room' ); ?>
+							</label>
+						</td>
 					</tr>
 				</table>
 
