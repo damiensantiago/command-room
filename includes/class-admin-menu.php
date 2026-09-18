@@ -16,6 +16,28 @@ class Cmdroom_Admin_Menu {
 
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ) );
+		// Las páginas de Command Room deben verse limpias: sin avisos de
+		// actualización de core, licencias caducadas de otros plugins
+		// (Imagify, SoftWP/Loginizer) ni banners de upsell (Rank Math).
+		// Se retiran solo aquí — el resto del admin los sigue mostrando.
+		add_action( 'admin_notices', array( __CLASS__, 'silence_foreign_notices' ), 0 );
+		add_action( 'all_admin_notices', array( __CLASS__, 'silence_foreign_notices' ), 0 );
+	}
+
+	private static function is_own_screen() {
+		if ( ! isset( $_GET['page'] ) ) {
+			return false;
+		}
+		$page = sanitize_key( wp_unslash( $_GET['page'] ) );
+		return self::SLUG === $page || 0 === strpos( $page, self::SLUG . '-' );
+	}
+
+	public static function silence_foreign_notices() {
+		if ( ! is_admin() || ! self::is_own_screen() ) {
+			return;
+		}
+		remove_all_actions( 'admin_notices' );
+		remove_all_actions( 'all_admin_notices' );
 	}
 
 	public static function register_menu() {
