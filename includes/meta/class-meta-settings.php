@@ -53,6 +53,11 @@ class Cmdroom_Meta_Settings {
 		return $opts['home'];
 	}
 
+	public static function get_author_archive_template() {
+		$opts = self::get_options();
+		return $opts['author_archive'];
+	}
+
 	private static function defaults() {
 		$post_types = array();
 		foreach ( self::public_post_types() as $pt ) {
@@ -79,6 +84,10 @@ class Cmdroom_Meta_Settings {
 				'title'       => '%sitename% %sep% %sitedesc%',
 				'description' => '%sitedesc%',
 			),
+			'author_archive' => array(
+				'title'       => '%author_name% %sep% %sitename%',
+				'description' => '%excerpt%',
+			),
 		);
 	}
 
@@ -88,6 +97,46 @@ class Cmdroom_Meta_Settings {
 
 	public static function public_taxonomies() {
 		return get_taxonomies( array( 'public' => true ), 'objects' );
+	}
+
+	/**
+	 * Agrupación por "tipo de página" usada en las pestañas del admin
+	 * (Metas y Datos estructurados comparten exactamente esta lógica).
+	 */
+	public static function content_post_types() {
+		return array_filter(
+			self::public_post_types(),
+			function ( $pt ) {
+				return 'page' !== $pt->name;
+			}
+		);
+	}
+
+	public static function corporate_post_types() {
+		return array_filter(
+			self::public_post_types(),
+			function ( $pt ) {
+				return 'page' === $pt->name;
+			}
+		);
+	}
+
+	public static function category_taxonomies() {
+		return array_filter(
+			self::public_taxonomies(),
+			function ( $tax ) {
+				return 'post_tag' !== $tax->name;
+			}
+		);
+	}
+
+	public static function tag_taxonomies() {
+		return array_filter(
+			self::public_taxonomies(),
+			function ( $tax ) {
+				return 'post_tag' === $tax->name;
+			}
+		);
 	}
 
 	public static function handle_save() {
@@ -103,6 +152,9 @@ class Cmdroom_Meta_Settings {
 
 		$opts['home']['title']       = isset( $_POST['home_title'] ) ? sanitize_text_field( wp_unslash( $_POST['home_title'] ) ) : $opts['home']['title'];
 		$opts['home']['description'] = isset( $_POST['home_description'] ) ? sanitize_text_field( wp_unslash( $_POST['home_description'] ) ) : $opts['home']['description'];
+
+		$opts['author_archive']['title']       = isset( $_POST['author_archive_title'] ) ? sanitize_text_field( wp_unslash( $_POST['author_archive_title'] ) ) : $opts['author_archive']['title'];
+		$opts['author_archive']['description'] = isset( $_POST['author_archive_description'] ) ? sanitize_text_field( wp_unslash( $_POST['author_archive_description'] ) ) : $opts['author_archive']['description'];
 
 		foreach ( self::public_post_types() as $pt ) {
 			$key = 'pt_' . $pt->name;
@@ -130,8 +182,51 @@ class Cmdroom_Meta_Settings {
 		exit;
 	}
 
+	/**
+	 * Imprime una tabla form-table de plantillas título/descripción para un
+	 * listado de post types u objetos-taxonomía (misma forma: ->name y
+	 * ->labels->name), usado por cada pestaña de tipos de contenido.
+	 *
+	 * @param array  $objects     Post types o taxonomías (objetos con ->name y ->labels->name).
+	 * @param string $group       'post_types' o 'taxonomies' — qué rama de $opts leer.
+	 * @param string $field_prefix 'pt' o 'tax' — prefijo de los names de los inputs (compatibilidad con handle_save()).
+	 * @param array  $opts        Opciones actuales.
+	 */
+	private static function render_group_table( $objects, $group, $field_prefix, $opts ) {
+		?>
+		<table class="form-table">
+			<?php foreach ( $objects as $object ) :
+				$tpl = $opts[ $group ][ $object->name ] ?? array(
+					'title'       => '',
+					'description' => '',
+				);
+				$key = $field_prefix . '_' . $object->name;
+				?>
+				<tr>
+					<th><?php echo esc_html( $object->labels->name ); ?></th>
+					<td>
+						<input type="text" name="<?php echo esc_attr( $key ); ?>_title" value="<?php echo esc_attr( $tpl['title'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de título', 'command-room' ); ?>" /><br />
+						<input type="text" name="<?php echo esc_attr( $key ); ?>_description" value="<?php echo esc_attr( $tpl['description'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de descripción', 'command-room' ); ?>" />
+					</td>
+				</tr>
+			<?php endforeach; ?>
+		</table>
+		<?php
+	}
+
 	public static function render_page() {
 		$opts = self::get_options();
+
+		$tabs = array(
+			'home'         => __( 'Home', 'command-room' ),
+			'categorias'   => __( 'Categorías', 'command-room' ),
+			'contenido'    => __( 'Contenido', 'command-room' ),
+			'autor'        => __( 'Página de autor', 'command-room' ),
+			'corporativas' => __( 'Páginas corporativas', 'command-room' ),
+			'tags'         => __( 'Tags', 'command-room' ),
+		);
+		$active_tab = Cmdroom_Admin_Menu::get_active_tab( $tabs );
+		$page_slug  = 'cmdroom-metas';
 		?>
 		<div class="wrap cmdroom-wrap">
 			<h1><?php esc_html_e( 'Metas — plantillas por tipo de contenido', 'command-room' ); ?></h1>
@@ -145,6 +240,7 @@ class Cmdroom_Meta_Settings {
 				<code>%title%</code> <code>%sitename%</code> <code>%sitedesc%</code> <code>%sep%</code>
 				<code>%excerpt%</code> <code>%category%</code> <code>%author_name%</code> <code>%date%</code>
 				<code>%currentyear%</code> <code>%page%</code> <code>%term_title%</code> <code>%term_description%</code>
+				— <?php esc_html_e( 'ver el glosario completo en SEO → Variables.', 'command-room' ); ?>
 			</p>
 
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
@@ -166,46 +262,49 @@ class Cmdroom_Meta_Settings {
 							</label>
 						</td>
 					</tr>
-					<tr>
-						<th><?php esc_html_e( 'Home', 'command-room' ); ?></th>
-						<td>
-							<input type="text" name="home_title" value="<?php echo esc_attr( $opts['home']['title'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de título', 'command-room' ); ?>" /><br />
-							<input type="text" name="home_description" value="<?php echo esc_attr( $opts['home']['description'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de descripción', 'command-room' ); ?>" />
-						</td>
-					</tr>
 				</table>
 
-				<h2><?php esc_html_e( 'Tipos de contenido', 'command-room' ); ?></h2>
-				<table class="form-table">
-					<?php foreach ( self::public_post_types() as $pt ) :
-						$tpl = $opts['post_types'][ $pt->name ] ?? array( 'title' => '', 'description' => '' );
-						$key = 'pt_' . $pt->name;
-						?>
-						<tr>
-							<th><?php echo esc_html( $pt->labels->name ); ?></th>
-							<td>
-								<input type="text" name="<?php echo esc_attr( $key ); ?>_title" value="<?php echo esc_attr( $tpl['title'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de título', 'command-room' ); ?>" /><br />
-								<input type="text" name="<?php echo esc_attr( $key ); ?>_description" value="<?php echo esc_attr( $tpl['description'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de descripción', 'command-room' ); ?>" />
-							</td>
-						</tr>
-					<?php endforeach; ?>
-				</table>
+				<?php Cmdroom_Admin_Menu::render_tab_nav( $tabs, $active_tab, $page_slug ); ?>
 
-				<h2><?php esc_html_e( 'Taxonomías', 'command-room' ); ?></h2>
-				<table class="form-table">
-					<?php foreach ( self::public_taxonomies() as $tax ) :
-						$tpl = $opts['taxonomies'][ $tax->name ] ?? array( 'title' => '', 'description' => '' );
-						$key = 'tax_' . $tax->name;
-						?>
+				<div class="cmdroom-tab-panel" data-tab="home" <?php echo 'home' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<table class="form-table">
 						<tr>
-							<th><?php echo esc_html( $tax->labels->name ); ?></th>
+							<th><?php esc_html_e( 'Home', 'command-room' ); ?></th>
 							<td>
-								<input type="text" name="<?php echo esc_attr( $key ); ?>_title" value="<?php echo esc_attr( $tpl['title'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de título', 'command-room' ); ?>" /><br />
-								<input type="text" name="<?php echo esc_attr( $key ); ?>_description" value="<?php echo esc_attr( $tpl['description'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de descripción', 'command-room' ); ?>" />
+								<input type="text" name="home_title" value="<?php echo esc_attr( $opts['home']['title'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de título', 'command-room' ); ?>" /><br />
+								<input type="text" name="home_description" value="<?php echo esc_attr( $opts['home']['description'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de descripción', 'command-room' ); ?>" />
 							</td>
 						</tr>
-					<?php endforeach; ?>
-				</table>
+					</table>
+				</div>
+
+				<div class="cmdroom-tab-panel" data-tab="categorias" <?php echo 'categorias' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<?php self::render_group_table( self::category_taxonomies(), 'taxonomies', 'tax', $opts ); ?>
+				</div>
+
+				<div class="cmdroom-tab-panel" data-tab="contenido" <?php echo 'contenido' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<?php self::render_group_table( self::content_post_types(), 'post_types', 'pt', $opts ); ?>
+				</div>
+
+				<div class="cmdroom-tab-panel" data-tab="autor" <?php echo 'autor' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<table class="form-table">
+						<tr>
+							<th><?php esc_html_e( 'Página de autor', 'command-room' ); ?></th>
+							<td>
+								<input type="text" name="author_archive_title" value="<?php echo esc_attr( $opts['author_archive']['title'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de título', 'command-room' ); ?>" /><br />
+								<input type="text" name="author_archive_description" value="<?php echo esc_attr( $opts['author_archive']['description'] ); ?>" class="large-text" placeholder="<?php esc_attr_e( 'Plantilla de descripción', 'command-room' ); ?>" />
+							</td>
+						</tr>
+					</table>
+				</div>
+
+				<div class="cmdroom-tab-panel" data-tab="corporativas" <?php echo 'corporativas' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<?php self::render_group_table( self::corporate_post_types(), 'post_types', 'pt', $opts ); ?>
+				</div>
+
+				<div class="cmdroom-tab-panel" data-tab="tags" <?php echo 'tags' === $active_tab ? '' : 'style="display:none;"'; ?>>
+					<?php self::render_group_table( self::tag_taxonomies(), 'taxonomies', 'tax', $opts ); ?>
+				</div>
 
 				<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
 			</form>

@@ -35,8 +35,9 @@ class Cmdroom_Meta_Variables {
 	}
 
 	private static function build_vars( $context ) {
-		$post = isset( $context['post'] ) ? $context['post'] : null;
-		$term = isset( $context['term'] ) ? $context['term'] : null;
+		$post   = isset( $context['post'] ) ? $context['post'] : null;
+		$term   = isset( $context['term'] ) ? $context['term'] : null;
+		$author = isset( $context['author'] ) ? $context['author'] : null;
 
 		$vars = array(
 			'sitename'    => get_bloginfo( 'name' ),
@@ -68,6 +69,14 @@ class Cmdroom_Meta_Variables {
 			$vars['title']        = get_bloginfo( 'name' );
 			$vars['excerpt']      = get_bloginfo( 'description' );
 			$vars['excerpt_only'] = $vars['excerpt'];
+		} elseif ( $author instanceof WP_User ) {
+			$bio = wp_trim_words( wp_strip_all_tags( get_the_author_meta( 'description', $author->ID ) ), 30 );
+
+			$vars['title']        = $author->display_name;
+			$vars['author_name']  = $author->display_name;
+			$vars['author']       = $author->display_name; // alias: nombre de variable de Rank Math para el autor
+			$vars['excerpt']      = $bio;
+			$vars['excerpt_only'] = $bio;
 		}
 
 		return $vars;
@@ -106,18 +115,18 @@ class Cmdroom_Meta_Variables {
 	 */
 	public static function catalog() {
 		return array(
-			array( 'tag' => '%title%', 'label' => __( 'Título', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Título del post, nombre del término, o nombre del sitio en portada.', 'command-room' ) ),
-			array( 'tag' => '%sitename%', 'label' => __( 'Nombre del sitio', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Ajustes → General → Título del sitio.', 'command-room' ) ),
-			array( 'tag' => '%sitedesc%', 'label' => __( 'Descripción del sitio', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Ajustes → General → Eslogan.', 'command-room' ) ),
-			array( 'tag' => '%sep%', 'label' => __( 'Separador', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'El carácter configurado en Metas → General (por defecto "-").', 'command-room' ) ),
-			array( 'tag' => '%excerpt%', 'label' => __( 'Extracto', 'command-room' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'El extracto manual del post si existe, si no las primeras ~30 palabras del contenido. En un término, las primeras palabras de su descripción.', 'command-room' ) ),
-			array( 'tag' => '%excerpt_only%', 'label' => __( 'Extracto (alias)', 'command-room' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'Igual que %excerpt% — alias por compatibilidad con plantillas importadas de Rank Math.', 'command-room' ) ),
+			array( 'tag' => '%title%', 'label' => __( 'Título', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Título del post, nombre del término, nombre del sitio en portada, o nombre del autor en su archivo.', 'command-room' ) ),
+			array( 'tag' => '%sitename%', 'label' => __( 'Nombre del sitio', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Ajustes → General → Título del sitio.', 'command-room' ) ),
+			array( 'tag' => '%sitedesc%', 'label' => __( 'Descripción del sitio', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Ajustes → General → Eslogan.', 'command-room' ) ),
+			array( 'tag' => '%sep%', 'label' => __( 'Separador', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'El carácter configurado en Metas → General (por defecto "-").', 'command-room' ) ),
+			array( 'tag' => '%excerpt%', 'label' => __( 'Extracto', 'command-room' ), 'contexts' => array( 'post', 'term', 'author_archive' ), 'description' => __( 'El extracto manual del post si existe, si no las primeras ~30 palabras del contenido. En un término, las primeras palabras de su descripción. En un archivo de autor, las primeras palabras de su biografía.', 'command-room' ) ),
+			array( 'tag' => '%excerpt_only%', 'label' => __( 'Extracto (alias)', 'command-room' ), 'contexts' => array( 'post', 'term', 'author_archive' ), 'description' => __( 'Igual que %excerpt% — alias por compatibilidad con plantillas importadas de Rank Math.', 'command-room' ) ),
 			array( 'tag' => '%category%', 'label' => __( 'Categoría', 'command-room' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'En un post, el nombre de su categoría principal. En un término, su propio nombre.', 'command-room' ) ),
-			array( 'tag' => '%author_name%', 'label' => __( 'Autor', 'command-room' ), 'contexts' => array( 'post' ), 'description' => __( 'Nombre visible del autor del post.', 'command-room' ) ),
-			array( 'tag' => '%author%', 'label' => __( 'Autor (alias)', 'command-room' ), 'contexts' => array( 'post' ), 'description' => __( 'Igual que %author_name% — es el nombre de variable que usa Rank Math.', 'command-room' ) ),
+			array( 'tag' => '%author_name%', 'label' => __( 'Autor', 'command-room' ), 'contexts' => array( 'post', 'author_archive' ), 'description' => __( 'Nombre visible del autor del post, o del autor cuyo archivo se está viendo.', 'command-room' ) ),
+			array( 'tag' => '%author%', 'label' => __( 'Autor (alias)', 'command-room' ), 'contexts' => array( 'post', 'author_archive' ), 'description' => __( 'Igual que %author_name% — es el nombre de variable que usa Rank Math.', 'command-room' ) ),
 			array( 'tag' => '%date%', 'label' => __( 'Fecha de publicación', 'command-room' ), 'contexts' => array( 'post' ), 'description' => __( 'Fecha del post con el formato de Ajustes → General.', 'command-room' ) ),
-			array( 'tag' => '%currentyear%', 'label' => __( 'Año actual', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'El año en curso — útil para "Copyright %currentyear%" o campañas con año.', 'command-room' ) ),
-			array( 'tag' => '%page%', 'label' => __( 'Página de paginación', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Se resuelve a "Página N" cuando la URL está paginada (page/2/, etc.); vacío en la primera página.', 'command-room' ) ),
+			array( 'tag' => '%currentyear%', 'label' => __( 'Año actual', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'El año en curso — útil para "Copyright %currentyear%" o campañas con año.', 'command-room' ) ),
+			array( 'tag' => '%page%', 'label' => __( 'Página de paginación', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Se resuelve a "Página N" cuando la URL está paginada (page/2/, etc.); vacío en la primera página.', 'command-room' ) ),
 			array( 'tag' => '%term_title%', 'label' => __( 'Nombre del término', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'El nombre de la categoría/etiqueta/término actual.', 'command-room' ) ),
 			array( 'tag' => '%term%', 'label' => __( 'Nombre del término (alias)', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'Igual que %term_title% — es el nombre de variable que usa Rank Math.', 'command-room' ) ),
 			array( 'tag' => '%term_description%', 'label' => __( 'Descripción del término', 'command-room' ), 'contexts' => array( 'term' ), 'description' => __( 'El texto de descripción que se ha escrito para la categoría/etiqueta.', 'command-room' ) ),

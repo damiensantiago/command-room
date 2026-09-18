@@ -13,9 +13,10 @@ class Cmdroom_Variables_Glossary {
 		$catalog = Cmdroom_Meta_Variables::catalog();
 
 		$context_labels = array(
-			'post' => __( 'Posts/páginas', 'command-room' ),
-			'term' => __( 'Categorías/etiquetas', 'command-room' ),
-			'home' => __( 'Home', 'command-room' ),
+			'post'           => __( 'Posts/páginas', 'command-room' ),
+			'term'           => __( 'Categorías/etiquetas', 'command-room' ),
+			'home'           => __( 'Home', 'command-room' ),
+			'author_archive' => __( 'Página de autor', 'command-room' ),
 		);
 		?>
 		<div class="wrap cmdroom-wrap">
