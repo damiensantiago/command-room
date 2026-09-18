@@ -14,8 +14,16 @@ class Cmdroom_Admin_Menu {
 	const CAPABILITY = 'manage_options';
 	const SLUG        = 'cmdroom';
 
+	/**
+	 * Opción que decide qué submenús aparecen en la barra lateral de wp-admin.
+	 * Array slug => bool. Si un slug no tiene entrada, se considera visible
+	 * (para que instalar un módulo nuevo no lo esconda por sorpresa).
+	 */
+	const OPTION_VISIBILITY = 'cmdroom_menu_visibility';
+
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ) );
+		add_action( 'admin_post_cmdroom_save_menu_visibility', array( __CLASS__, 'handle_save_menu_visibility' ) );
 		// Las páginas de Command Room deben verse limpias: sin avisos de
 		// actualización de core, licencias caducadas de otros plugins
 		// (Imagify, SoftWP/Loginizer) ni banners de upsell (Rank Math).
@@ -51,7 +59,43 @@ class Cmdroom_Admin_Menu {
 			59 // justo debajo de Apariencia (60)
 		);
 
-		$submenus = array(
+		$visibility = self::get_menu_visibility();
+
+		foreach ( self::get_submenus() as $slug => $label ) {
+			$page_slug = 'general' === $slug ? self::SLUG : self::SLUG . '-' . $slug;
+			// Los slugs con guion (ai-bots, image-seo) no pueden ser sufijo
+			// de un nombre de método PHP: se traducen a guion bajo solo
+			// para resolver el callback, la URL de admin sigue con guion.
+			$method_slug = str_replace( '-', '_', $slug );
+
+			// "general" es siempre el punto de entrada del plugin — siempre
+			// visible, no se ofrece la opción de esconderlo. El resto obedece
+			// a cmdroom_menu_visibility: si está desmarcado se registra con
+			// parent_slug vacío, lo que hace que WordPress cree la página
+			// igualmente (URL directa, capability, hook) pero no la cuelgue
+			// de ningún menú.
+			$parent_slug = self::SLUG;
+			if ( 'general' !== $slug && empty( $visibility[ $slug ] ) ) {
+				$parent_slug = null;
+			}
+
+			add_submenu_page(
+				$parent_slug,
+				sprintf( '%s — SEO', $label ),
+				$label,
+				self::CAPABILITY,
+				$page_slug,
+				array( __CLASS__, 'render_' . $method_slug )
+			);
+		}
+	}
+
+	/**
+	 * Lista única de submenús — fuente de verdad tanto para el registro real
+	 * del menú como para la tabla de visibilidad en la página General.
+	 */
+	public static function get_submenus() {
+		return array(
 			'general'      => __( 'General', 'command-room' ),
 			'metas'        => __( 'Metas', 'command-room' ),
 			'variables'    => __( 'Variables', 'command-room' ),
@@ -68,39 +112,163 @@ class Cmdroom_Admin_Menu {
 			'cleanup'      => __( 'Limpieza HTTP/permalinks', 'command-room' ),
 			'tools'        => __( 'Herramientas', 'command-room' ),
 		);
-
-		foreach ( $submenus as $slug => $label ) {
-			$page_slug = 'general' === $slug ? self::SLUG : self::SLUG . '-' . $slug;
-			// Los slugs con guion (ai-bots, image-seo) no pueden ser sufijo
-			// de un nombre de método PHP: se traducen a guion bajo solo
-			// para resolver el callback, la URL de admin sigue con guion.
-			$method_slug = str_replace( '-', '_', $slug );
-
-			add_submenu_page(
-				self::SLUG,
-				sprintf( '%s — SEO', $label ),
-				$label,
-				self::CAPABILITY,
-				$page_slug,
-				array( __CLASS__, 'render_' . $method_slug )
-			);
-		}
 	}
 
-	private static function render_placeholder( $title, $phase_note ) {
+	/**
+	 * Descripción breve de qué hace cada módulo, para la tabla resumen de
+	 * la página General. Solo texto — no afecta al registro del menú.
+	 */
+	public static function get_descriptions() {
+		return array(
+			'metas'       => __( 'Plantillas de título y meta descripción por tipo de contenido, taxonomía, home y página de autor.', 'command-room' ),
+			'variables'   => __( 'Glosario de referencia de las variables (%title%, %sep%, %author_name%...) disponibles en las plantillas de Metas.', 'command-room' ),
+			'schema'      => __( 'Datos estructurados JSON-LD: negocio/organización global y el tipo de schema por tipo de contenido.', 'command-room' ),
+			'archives'    => __( 'Ajustes de optimización de archivos y páginas de taxonomía.', 'command-room' ),
+			'breadcrumbs' => __( 'Configuración de las migas de pan (breadcrumbs) y su salida como BreadcrumbList en el schema.', 'command-room' ),
+			'sitemaps'    => __( 'Generación y ajustes de los sitemaps XML del sitio.', 'command-room' ),
+			'redirects'   => __( 'Gestor de reglas de redirección 301/302.', 'command-room' ),
+			'monitor404'  => __( 'Registro de URLs que devuelven 404 en el sitio, para detectar enlaces rotos.', 'command-room' ),
+			'robots'      => __( 'Editor del contenido de robots.txt.', 'command-room' ),
+			'ai-bots'     => __( 'Control de acceso de bots de IA (GPTBot, ClaudeBot, etc.) al sitio.', 'command-room' ),
+			'code'        => __( 'Inyección de fragmentos de código (head/body/footer) sin tocar el tema.', 'command-room' ),
+			'image-seo'   => __( 'Generación automática de atributos alt/title de imágenes.', 'command-room' ),
+			'cleanup'     => __( 'Limpieza de cabeceras HTTP innecesarias y ajustes de permalinks.', 'command-room' ),
+			'tools'       => __( 'Herramientas de importación desde Rank Math y vista previa de metas/schema.', 'command-room' ),
+		);
+	}
+
+	public static function get_menu_visibility() {
+		$saved = get_option( self::OPTION_VISIBILITY, array() );
+		$out   = array();
+		foreach ( self::get_submenus() as $slug => $label ) {
+			if ( 'general' === $slug ) {
+				continue;
+			}
+			// Sin entrada guardada todavía = visible por defecto, para que
+			// activar el plugin (o añadir un módulo nuevo) no esconda nada.
+			$out[ $slug ] = isset( $saved[ $slug ] ) ? (bool) $saved[ $slug ] : true;
+		}
+		return $out;
+	}
+
+	public static function handle_save_menu_visibility() {
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'command-room' ) );
+		}
+		check_admin_referer( 'cmdroom_save_menu_visibility' );
+
+		$posted     = isset( $_POST['menu_visibility'] ) ? (array) wp_unslash( $_POST['menu_visibility'] ) : array();
+		$visibility = array();
+		foreach ( self::get_submenus() as $slug => $label ) {
+			if ( 'general' === $slug ) {
+				continue;
+			}
+			$visibility[ $slug ] = isset( $posted[ $slug ] );
+		}
+
+		update_option( self::OPTION_VISIBILITY, $visibility );
+
+		wp_safe_redirect( add_query_arg( 'cmdroom_saved', '1', wp_get_referer() ) );
+		exit;
+	}
+
+	public static function render_general() {
+		$submenus    = self::get_submenus();
+		$descriptions = self::get_descriptions();
+		$visibility  = self::get_menu_visibility();
 		?>
 		<div class="wrap cmdroom-wrap">
-			<h1><?php echo esc_html( $title ); ?></h1>
-			<p><?php echo esc_html( $phase_note ); ?></p>
+			<h1><?php esc_html_e( 'Command Room — General', 'command-room' ); ?></h1>
+
+			<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
+				<div class="notice notice-success"><p><?php esc_html_e( 'Ajustes guardados.', 'command-room' ); ?></p></div>
+			<?php endif; ?>
+
+			<p class="description">
+				<?php esc_html_e( 'Resumen de todos los módulos del plugin. Desmarca "Mostrar en la barra lateral" para ocultar un módulo del menú de wp-admin sin desactivarlo — la página sigue siendo accesible por su URL directa.', 'command-room' ); ?>
+			</p>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( 'cmdroom_save_menu_visibility' ); ?>
+				<input type="hidden" name="action" value="cmdroom_save_menu_visibility" />
+
+				<table class="widefat striped" style="max-width:1000px;">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Módulo', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Descripción', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Mostrar en la barra lateral', 'command-room' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( $submenus as $slug => $label ) :
+							if ( 'general' === $slug ) {
+								continue;
+							}
+							$page_slug   = self::SLUG . '-' . $slug;
+							$url         = admin_url( 'admin.php?page=' . $page_slug );
+							$description = isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : '';
+							$is_visible  = ! empty( $visibility[ $slug ] );
+							?>
+							<tr>
+								<td><a href="<?php echo esc_url( $url ); ?>"><strong><?php echo esc_html( $label ); ?></strong></a></td>
+								<td><?php echo esc_html( $description ); ?></td>
+								<td>
+									<label>
+										<input type="checkbox" name="menu_visibility[<?php echo esc_attr( $slug ); ?>]" value="1" <?php checked( $is_visible ); ?> />
+										<span class="screen-reader-text"><?php esc_html_e( 'Mostrar en la barra lateral', 'command-room' ); ?></span>
+									</label>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+
+				<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
+			</form>
 		</div>
 		<?php
 	}
 
-	public static function render_general() {
-		self::render_placeholder(
-			__( 'Command Room — General', 'command-room' ),
-			__( 'Fase 0: esqueleto del plugin. Los ajustes generales llegan en fases posteriores.', 'command-room' )
-		);
+	/**
+	 * Nav-tab estándar de wp-admin, reutilizable por cualquier módulo que
+	 * quiera agrupar su configuración por pestañas. No imprime el contenido
+	 * de las pestañas — solo la navegación; el módulo decide qué mostrar
+	 * según el tab activo devuelto.
+	 *
+	 * @param array  $tabs        Array key => label, en el orden en que deben mostrarse.
+	 * @param string $active_tab  Tab activo (ya resuelto/saneado por el llamante).
+	 * @param string $page_slug   Slug de la página (el valor de $_GET['page']) para construir las URLs.
+	 * @return void
+	 */
+	public static function render_tab_nav( $tabs, $active_tab, $page_slug ) {
+		?>
+		<h2 class="nav-tab-wrapper">
+			<?php foreach ( $tabs as $key => $label ) :
+				$url   = add_query_arg( array( 'page' => $page_slug, 'tab' => $key ), admin_url( 'admin.php' ) );
+				$class = 'nav-tab' . ( $key === $active_tab ? ' nav-tab-active' : '' );
+				?>
+				<a href="<?php echo esc_url( $url ); ?>" class="<?php echo esc_attr( $class ); ?>"><?php echo esc_html( $label ); ?></a>
+			<?php endforeach; ?>
+		</h2>
+		<?php
+	}
+
+	/**
+	 * Resuelve el tab activo desde $_GET['tab'], saneado y validado contra
+	 * la lista de tabs disponibles. Si no hay tab en la URL o no es válido,
+	 * devuelve el primero del array.
+	 *
+	 * @param array  $tabs Array key => label.
+	 * @return string
+	 */
+	public static function get_active_tab( $tabs ) {
+		$requested = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : '';
+		if ( $requested && array_key_exists( $requested, $tabs ) ) {
+			return $requested;
+		}
+		$keys = array_keys( $tabs );
+		return isset( $keys[0] ) ? $keys[0] : '';
 	}
 
 	public static function render_metas() {
