@@ -410,15 +410,19 @@ class Cmdroom_Admin_Menu {
 				<?php if ( $data ) : ?>
 					<table class="widefat" style="max-width:800px;margin-top:1em;">
 						<tbody>
-							<tr><th><?php esc_html_e( 'Título', 'command-room' ); ?></th><td><?php echo esc_html( $data['title'] ); ?></td></tr>
-							<tr><th><?php esc_html_e( 'Descripción', 'command-room' ); ?></th><td><?php echo esc_html( $data['description'] ); ?></td></tr>
 							<tr><th><?php esc_html_e( 'Canonical', 'command-room' ); ?></th><td><?php echo esc_html( $data['canonical'] ); ?></td></tr>
 							<tr><th><?php esc_html_e( 'Robots', 'command-room' ); ?></th><td><?php echo esc_html( ( $data['noindex'] ? 'noindex' : 'index' ) . ', ' . ( $data['nofollow'] ? 'nofollow' : 'follow' ) ); ?></td></tr>
 							<tr><th><?php esc_html_e( 'og:image', 'command-room' ); ?></th><td><?php echo esc_html( $data['og_image'] ? $data['og_image'] : '—' ); ?></td></tr>
 						</tbody>
 					</table>
+					<p style="margin-top:1em;"><strong><?php esc_html_e( 'Bloque <head>', 'command-room' ); ?></strong></p>
+					<pre style="max-width:800px;max-height:250px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;"><?php echo esc_html( $data['head_html'] ); ?></pre>
+					<?php Cmdroom_Schema_Builder::$last_error = ''; ?>
 					<?php $schema = Cmdroom_Schema_Builder::build_for_post( absint( $_GET['cmdroom_preview_id'] ) ); ?>
 					<p style="margin-top:1em;"><strong><?php esc_html_e( 'Datos estructurados (@graph)', 'command-room' ); ?></strong></p>
+					<?php if ( Cmdroom_Schema_Builder::$last_error ) : ?>
+						<div class="notice notice-error inline"><p><?php echo esc_html( Cmdroom_Schema_Builder::$last_error ); ?></p></div>
+					<?php endif; ?>
 					<?php if ( $schema ) : ?>
 						<pre style="max-width:800px;max-height:400px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;"><?php echo esc_html( wp_json_encode( $schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) ); ?></pre>
 					<?php else : ?>
@@ -442,13 +446,17 @@ class Cmdroom_Admin_Menu {
 				<?php if ( $data ) : ?>
 					<table class="widefat" style="max-width:800px;margin-top:1em;">
 						<tbody>
-							<tr><th><?php esc_html_e( 'Título', 'command-room' ); ?></th><td><?php echo esc_html( $data['title'] ); ?></td></tr>
-							<tr><th><?php esc_html_e( 'Descripción', 'command-room' ); ?></th><td><?php echo esc_html( $data['description'] ); ?></td></tr>
 							<tr><th><?php esc_html_e( 'Canonical', 'command-room' ); ?></th><td><?php echo esc_html( $data['canonical'] ); ?></td></tr>
 						</tbody>
 					</table>
+					<p style="margin-top:1em;"><strong><?php esc_html_e( 'Bloque <head>', 'command-room' ); ?></strong></p>
+					<pre style="max-width:800px;max-height:250px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;"><?php echo esc_html( $data['head_html'] ); ?></pre>
+					<?php Cmdroom_Schema_Builder::$last_error = ''; ?>
 					<?php $schema = Cmdroom_Schema_Builder::build_for_term( $term ); ?>
 					<p style="margin-top:1em;"><strong><?php esc_html_e( 'Datos estructurados (@graph)', 'command-room' ); ?></strong></p>
+					<?php if ( Cmdroom_Schema_Builder::$last_error ) : ?>
+						<div class="notice notice-error inline"><p><?php echo esc_html( Cmdroom_Schema_Builder::$last_error ); ?></p></div>
+					<?php endif; ?>
 					<pre style="max-width:800px;max-height:400px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;"><?php echo esc_html( wp_json_encode( $schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) ); ?></pre>
 				<?php else : ?>
 					<p><?php esc_html_e( 'No se encontró ese término.', 'command-room' ); ?></p>
