@@ -66,9 +66,13 @@ class Cmdroom_Sitemap_Render {
 			: self::query_post_entries( $def );
 
 		$with_images = ! empty( $def['images'] );
+		$with_videos = ! empty( $def['videos'] );
 		$namespaces  = 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"';
 		if ( $with_images ) {
 			$namespaces .= ' xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"';
+		}
+		if ( $with_videos ) {
+			$namespaces .= ' xmlns:video="http://www.google.com/schemas/sitemap-video/1.1"';
 		}
 
 		$xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
@@ -78,13 +82,34 @@ class Cmdroom_Sitemap_Render {
 			$xml .= "\t<url>\n";
 			$xml .= "\t\t<loc>" . esc_xml( $entry['url'] ) . "</loc>\n";
 			$xml .= "\t\t<lastmod>" . esc_xml( $entry['lastmod'] ) . "</lastmod>\n";
+
 			if ( $with_images && ! empty( $entry['images'] ) ) {
-				foreach ( $entry['images'] as $image_url ) {
+				foreach ( $entry['images'] as $image ) {
 					$xml .= "\t\t<image:image>\n";
-					$xml .= "\t\t\t<image:loc>" . esc_xml( $image_url ) . "</image:loc>\n";
+					$xml .= "\t\t\t<image:loc>" . esc_xml( $image['url'] ) . "</image:loc>\n";
+					if ( ! empty( $image['title'] ) ) {
+						$xml .= "\t\t\t<image:title>" . esc_xml( $image['title'] ) . "</image:title>\n";
+					}
 					$xml .= "\t\t</image:image>\n";
 				}
 			}
+
+			if ( $with_videos && ! empty( $entry['videos'] ) ) {
+				foreach ( $entry['videos'] as $video ) {
+					$xml .= "\t\t<video:video>\n";
+					$xml .= "\t\t\t<video:thumbnail_loc>" . esc_xml( $video['thumbnail'] ) . "</video:thumbnail_loc>\n";
+					$xml .= "\t\t\t<video:title>" . esc_xml( $video['title'] ) . "</video:title>\n";
+					$xml .= "\t\t\t<video:description>" . esc_xml( $video['description'] ) . "</video:description>\n";
+					if ( ! empty( $video['content_loc'] ) ) {
+						$xml .= "\t\t\t<video:content_loc>" . esc_xml( $video['content_loc'] ) . "</video:content_loc>\n";
+					}
+					if ( ! empty( $video['player_loc'] ) ) {
+						$xml .= "\t\t\t<video:player_loc>" . esc_xml( $video['player_loc'] ) . "</video:player_loc>\n";
+					}
+					$xml .= "\t\t</video:video>\n";
+				}
+			}
+
 			$xml .= "\t</url>\n";
 		}
 
@@ -99,6 +124,11 @@ class Cmdroom_Sitemap_Render {
 	 * las últimas 48h (fuera de esa ventana Google pide sacarlos del
 	 * sitemap — el artículo sigue existiendo, solo deja de "anunciarse").
 	 * Ignora "terms" como origen: un archivo de categoría no es una noticia.
+	 *
+	 * Idioma por definición (`$def['lang']`) desde el rediseño de Claude
+	 * Design -- antes era una única opción global para todo el sitio, lo
+	 * que no tenía sentido si dos sitemaps News apuntan a audiencias en
+	 * idiomas distintos.
 	 */
 	private static function render_news_definition( $def ) {
 		$cache_key = 'cmdroom_sitemap_' . $def['slug'];
@@ -108,13 +138,24 @@ class Cmdroom_Sitemap_Render {
 		}
 
 		$publication_name = Cmdroom_Sitemap_Settings::get_news_publication_name();
-		$language          = Cmdroom_Sitemap_Settings::get_news_language();
+		$language         = ! empty( $def['lang'] ) ? $def['lang'] : 'es';
+		$vars             = wp_parse_args( isset( $def['vars'] ) ? $def['vars'] : array(), Cmdroom_Sitemap_Settings::VAR_DEFAULTS );
 
 		$xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 		$xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">' . "\n";
 
 		foreach ( self::query_news_post_ids( $def ) as $post_id ) {
-			$headline = wp_trim_words( get_the_title( $post_id ), 20, '' );
+			$context = array( 'post' => get_post( $post_id ) );
+
+			$headline = self::resolve_var( $vars['title'], $context );
+			if ( '' === $headline ) {
+				$headline = wp_trim_words( get_the_title( $post_id ), 20, '' );
+			}
+
+			$pub_date = self::resolve_var( $vars['pub_date'], $context );
+			if ( '' === $pub_date ) {
+				$pub_date = get_the_date( 'c', $post_id );
+			}
 
 			$xml .= "\t<url>\n";
 			$xml .= "\t\t<loc>" . esc_xml( get_permalink( $post_id ) ) . "</loc>\n";
@@ -123,7 +164,7 @@ class Cmdroom_Sitemap_Render {
 			$xml .= "\t\t\t\t<news:name>" . esc_xml( $publication_name ) . "</news:name>\n";
 			$xml .= "\t\t\t\t<news:language>" . esc_xml( $language ) . "</news:language>\n";
 			$xml .= "\t\t\t</news:publication>\n";
-			$xml .= "\t\t\t<news:publication_date>" . esc_xml( get_the_date( 'c', $post_id ) ) . "</news:publication_date>\n";
+			$xml .= "\t\t\t<news:publication_date>" . esc_xml( $pub_date ) . "</news:publication_date>\n";
 			$xml .= "\t\t\t<news:title>" . esc_xml( $headline ) . "</news:title>\n";
 			$xml .= "\t\t</news:news>\n";
 			$xml .= "\t</url>\n";
@@ -166,50 +207,155 @@ class Cmdroom_Sitemap_Render {
 
 	/**
 	 * Modo "posts": URLs de entradas/páginas de un post type, opcionalmente
-	 * acotadas a los términos de una taxonomía.
+	 * acotadas a los términos de una taxonomía. `lastmod`, la imagen
+	 * principal y el vídeo salen de las variables configuradas en la
+	 * pestaña "Variables" de la definición (ver resolve_var()).
 	 */
 	private static function query_post_entries( $def ) {
 		$with_images = ! empty( $def['images'] );
-		$entries     = array();
+		$with_videos = ! empty( $def['videos'] );
+		$vars        = wp_parse_args( isset( $def['vars'] ) ? $def['vars'] : array(), Cmdroom_Sitemap_Settings::VAR_DEFAULTS );
+
+		$entries = array();
 		foreach ( self::query_post_ids( $def ) as $post_id ) {
+			$context = array( 'post' => get_post( $post_id ) );
+
+			$lastmod = self::resolve_var( $vars['lastmod'], $context );
+			if ( '' === $lastmod ) {
+				$lastmod = get_post_modified_time( 'c', false, $post_id );
+			}
+
 			$entry = array(
 				'url'     => get_permalink( $post_id ),
-				'lastmod' => get_post_modified_time( 'c', false, $post_id ),
+				'lastmod' => $lastmod,
 			);
+
 			if ( $with_images ) {
-				$entry['images'] = self::get_post_image_urls( $post_id );
+				$entry['images'] = self::get_post_image_urls(
+					$post_id,
+					self::resolve_var( $vars['image'], $context ),
+					self::resolve_var( $vars['image_title'], $context )
+				);
 			}
+
+			if ( $with_videos ) {
+				$entry['videos'] = self::get_post_video_entries( $post_id, $vars, $context );
+			}
+
 			$entries[] = $entry;
 		}
 		return $entries;
 	}
 
 	/**
-	 * Imagen destacada + imágenes embebidas en el contenido (hasta un
-	 * límite razonable) — cubre el caso típico de posts sin imagen
-	 * destacada asignada pero con fotos dentro del cuerpo.
+	 * Imagen "principal" (la que resuelve la variable elegida en Variables
+	 * → Imagen/Título de imagen) + imagen destacada + imágenes embebidas en
+	 * el contenido (hasta un límite razonable) -- cubre el caso típico de
+	 * posts sin imagen destacada asignada pero con fotos dentro del cuerpo.
+	 * Solo la principal lleva <image:title>; las demás no tienen un título
+	 * propio que resolver.
+	 *
+	 * @return array[] Lista de ['url' => ..., 'title' => ...].
 	 */
-	private static function get_post_image_urls( $post_id ) {
-		$urls = array();
+	private static function get_post_image_urls( $post_id, $primary_url, $primary_title ) {
+		$images = array();
+
+		if ( $primary_url ) {
+			$images[] = array( 'url' => $primary_url, 'title' => $primary_title );
+		}
 
 		$thumb_id = get_post_thumbnail_id( $post_id );
 		if ( $thumb_id ) {
 			$thumb_url = wp_get_attachment_image_url( $thumb_id, 'full' );
-			if ( $thumb_url ) {
-				$urls[] = $thumb_url;
+			if ( $thumb_url && ! self::images_contain( $images, $thumb_url ) ) {
+				$images[] = array( 'url' => $thumb_url, 'title' => '' );
 			}
 		}
 
 		$post = get_post( $post_id );
 		if ( $post && preg_match_all( '/<img[^>]+src=["\']([^"\']+)["\']/i', $post->post_content, $matches ) ) {
 			foreach ( array_slice( $matches[1], 0, 10 ) as $src ) {
-				if ( ! in_array( $src, $urls, true ) ) {
-					$urls[] = $src;
+				if ( ! self::images_contain( $images, $src ) ) {
+					$images[] = array( 'url' => $src, 'title' => '' );
 				}
 			}
 		}
 
-		return array_slice( array_unique( $urls ), 0, 20 );
+		return array_slice( $images, 0, 20 );
+	}
+
+	private static function images_contain( $images, $url ) {
+		foreach ( $images as $image ) {
+			if ( $image['url'] === $url ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Vídeos embebidos en el contenido: <video><source src="..."> propio
+	 * (content_loc) y iframes de YouTube/Vimeo (player_loc) -- hasta 5 por
+	 * post. thumbnail_loc/title/description son obligatorios en el esquema
+	 * de vídeo de Google; si no hay ninguna miniatura disponible (ni la
+	 * variable configurada ni la imagen destacada), se omite el vídeo
+	 * entero en vez de emitir un <video:video> incompleto/inválido.
+	 */
+	private static function get_post_video_entries( $post_id, $vars, $context ) {
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			return array();
+		}
+
+		$thumbnail = self::resolve_var( $vars['image'], $context );
+		if ( '' === $thumbnail ) {
+			$thumbnail = self::get_post_thumbnail_url( $post );
+		}
+		if ( '' === $thumbnail ) {
+			return array();
+		}
+
+		$title = self::resolve_var( $vars['title'], $context );
+		if ( '' === $title ) {
+			$title = get_the_title( $post );
+		}
+
+		$description = self::resolve_var( '%excerpt%', $context );
+		if ( '' === $description ) {
+			$description = wp_trim_words( wp_strip_all_tags( strip_shortcodes( $post->post_content ) ), 30 );
+		}
+
+		$sources = array();
+
+		if ( preg_match_all( '/<video[^>]*>.*?<source[^>]+src=["\']([^"\']+)["\']/is', $post->post_content, $m ) ) {
+			foreach ( $m[1] as $src ) {
+				$sources[] = array( 'content_loc' => $src );
+			}
+		}
+
+		if ( preg_match_all( '#<iframe[^>]+src=["\']([^"\']*(?:youtube\.com/embed|youtu\.be|player\.vimeo\.com)[^"\']*)["\']#i', $post->post_content, $m ) ) {
+			foreach ( $m[1] as $src ) {
+				$sources[] = array( 'player_loc' => $src );
+			}
+		}
+
+		$videos = array();
+		foreach ( array_slice( $sources, 0, 5 ) as $source ) {
+			$videos[] = array_merge(
+				array( 'thumbnail' => $thumbnail, 'title' => $title, 'description' => $description ),
+				$source
+			);
+		}
+
+		return $videos;
+	}
+
+	private static function get_post_thumbnail_url( $post ) {
+		if ( ! has_post_thumbnail( $post ) ) {
+			return '';
+		}
+		$src = wp_get_attachment_image_src( get_post_thumbnail_id( $post ), 'full' );
+		return $src ? $src[0] : '';
 	}
 
 	/**
@@ -217,7 +363,10 @@ class Cmdroom_Sitemap_Render {
 	 * el caso de Italae, donde las categorías transaccionales SON la
 	 * página (plantilla propia por template_include), no una etiqueta
 	 * sobre posts. Sin lista de slugs, entran todos los términos con
-	 * contenido de esa taxonomía.
+	 * contenido de esa taxonomía. Los términos no tienen fecha de
+	 * modificación propia en WordPress core -- si la variable de lastmod
+	 * configurada no resuelve nada en contexto de término (p. ej.
+	 * %schema_date_published%, pensada para posts), se usa la hora actual.
 	 */
 	private static function query_term_entries( $def ) {
 		$args = array(
@@ -235,10 +384,14 @@ class Cmdroom_Sitemap_Render {
 			return array();
 		}
 
-		$now     = date_i18n( 'c' );
+		$vars = wp_parse_args( isset( $def['vars'] ) ? $def['vars'] : array(), Cmdroom_Sitemap_Settings::VAR_DEFAULTS );
+		$now  = date_i18n( 'c' );
+
 		$entries = array();
 		foreach ( array_slice( $terms, 0, $def['limit'] ) as $term ) {
-			$entries[] = array( 'url' => get_term_link( $term ), 'lastmod' => $now );
+			$context = array( 'term' => $term );
+			$lastmod = self::resolve_var( $vars['lastmod'], $context );
+			$entries[] = array( 'url' => get_term_link( $term ), 'lastmod' => '' !== $lastmod ? $lastmod : $now );
 		}
 		return $entries;
 	}
@@ -281,5 +434,87 @@ class Cmdroom_Sitemap_Render {
 			return date_i18n( 'c' );
 		}
 		return get_post_modified_time( 'c', false, $post_ids[0] );
+	}
+
+	/**
+	 * Traduce un token de %variable% (uno de los de
+	 * Cmdroom_Sitemap_Settings::VAR_OPTIONS) a su valor real EN CRUDO -- sin
+	 * pasar por Cmdroom_Meta_Variables::replace() ni
+	 * Cmdroom_Schema_Variables::replace() directamente, porque ambas
+	 * escapan su salida para el formato de destino (HTML/atributo o
+	 * JSON-string) y aquí el valor va a un nodo de texto XML, que ya se
+	 * escapa aparte con esc_xml() al montar el documento -- un doble
+	 * escapado (o el escapado equivocado) produciría entidades/backslashes
+	 * literales en el sitemap.
+	 *
+	 * @param string $token   Uno de los tokens permitidos (con %), o '' ("— Ninguno —").
+	 * @param array  $context ['post' => WP_Post] o ['term' => WP_Term].
+	 * @return string Valor en crudo, o '' si el token no aplica al contexto.
+	 */
+	private static function resolve_var( $token, $context ) {
+		$post = isset( $context['post'] ) && $context['post'] instanceof WP_Post ? $context['post'] : null;
+		$term = isset( $context['term'] ) && $context['term'] instanceof WP_Term ? $context['term'] : null;
+
+		switch ( $token ) {
+			case '%title%':
+				if ( $post ) {
+					$meta = Cmdroom_Meta_Resolver::resolve_for_post( $post );
+					return $meta ? $meta['title'] : get_the_title( $post );
+				}
+				if ( $term ) {
+					$meta = Cmdroom_Meta_Resolver::resolve_for_term( $term );
+					return $meta ? $meta['title'] : $term->name;
+				}
+				return '';
+
+			case '%schema_headline%':
+				if ( $post ) {
+					return wp_trim_words( get_the_title( $post ), 20, '' );
+				}
+				return $term ? $term->name : '';
+
+			case '%term_title%':
+				return $term ? $term->name : '';
+
+			case '%sitename%':
+				return get_bloginfo( 'name' );
+
+			case '%excerpt%':
+				if ( $post ) {
+					$meta = Cmdroom_Meta_Resolver::resolve_for_post( $post );
+					return $meta ? $meta['description'] : '';
+				}
+				if ( $term ) {
+					$meta = Cmdroom_Meta_Resolver::resolve_for_term( $term );
+					return $meta ? $meta['description'] : '';
+				}
+				return '';
+
+			case '%schema_date_published%':
+				return $post ? get_post_time( 'c', false, $post ) : '';
+
+			case '%schema_date_modified%':
+				return $post ? get_post_modified_time( 'c', false, $post ) : '';
+
+			case '%date%':
+				// %date% de Metas trae el formato humano de Ajustes → General
+				// (p. ej. "22 de septiembre de 2026"), inválido para un campo
+				// que exige ISO 8601 -- aquí se resuelve directo a la fecha
+				// de publicación en formato 'c'.
+				return $post ? get_post_time( 'c', false, $post ) : '';
+
+			case '%image%':
+			case '%og_image%':
+				return Cmdroom_Meta_Resolver::get_og_image_for_context( $context );
+
+			case '%schema_image%':
+				// Sin el fallback al logo del negocio que sí aplica %image%/
+				// %og_image% -- misma diferencia que hay entre ambas en Metas
+				// y Datos estructurados.
+				return $post ? self::get_post_thumbnail_url( $post ) : '';
+
+			default:
+				return '';
+		}
 	}
 }

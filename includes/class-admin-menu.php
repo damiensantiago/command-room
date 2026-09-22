@@ -226,6 +226,25 @@ class Cmdroom_Admin_Menu {
 
 				<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
 			</form>
+
+			<hr />
+
+			<?php
+			// Separador (%sep%) y salida en vivo de Metas: se movieron aquí
+			// con el rediseño de la pantalla "Meta data" (Claude Design), que
+			// ya no los incluye -- ver Cmdroom_Meta_Settings::render_general_section().
+			Cmdroom_Meta_Settings::render_general_section();
+
+			// Salida en vivo de Datos estructurados: mismo motivo, movida
+			// aquí con el rediseño de esa pantalla -- ver
+			// Cmdroom_Schema_Settings::render_general_section().
+			Cmdroom_Schema_Settings::render_general_section();
+
+			// Salida en vivo de Sitemaps + vista previa: mismo motivo,
+			// movidas aquí con el rediseño de esa pantalla -- ver
+			// Cmdroom_Sitemap_Settings::render_general_section().
+			Cmdroom_Sitemap_Settings::render_general_section();
+			?>
 		</div>
 		<?php
 	}

@@ -4,30 +4,66 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Ajustes de datos estructurados: negocio/organización global (nodo que
- * aparece en el @graph de cada página) y el bloque JSON del nodo específico
- * que le corresponde a cada tipo de contenido/taxonomía/autor.
- *
- * Desde 0.10.0 cada elemento guarda el CUERPO JSON completo del nodo (no
- * solo su @type) -- editable a mano en Ajustes → Datos estructurados. Sigue
- * siendo UN nodo más dentro del único @graph que construye
+ * Ajustes de datos estructurados: una lista de bloques JSON-LD `{ id, type,
+ * json }` por cada uno de los 7 grupos de tipo de página (general, home,
+ * categorias, contenido, autor, corporativas, tags) -- varios bloques por
+ * grupo son válidos (p. ej. Contenido puede llevar Article + FAQPage +
+ * HowTo a la vez), todos dentro del único @graph que construye
  * Cmdroom_Schema_Builder (nunca un <script type="application/ld+json">
- * independiente -- ver el docblock de esa clase).
+ * independiente).
+ *
+ * Los grupos son los mismos 7 de Metas (Cmdroom_Meta_Settings), por el mismo
+ * motivo: nunca un nodo por post type/taxonomía real del sitio -- eso fue lo
+ * que creó bloques sueltos para 'attachment' o taxonomías propias del tema
+ * (marca, tipo...) en la versión anterior de esta pantalla, antes de tener
+ * su propio rediseño de Claude Design.
  */
 class Cmdroom_Schema_Settings {
 
 	const OPTION = 'cmdroom_schema_options';
 
-	const BUSINESS_TYPES = array(
-		'Organization'        => 'Organization (genérico)',
-		'LocalBusiness'       => 'LocalBusiness (negocio local genérico)',
-		'ProfessionalService' => 'ProfessionalService',
-		'MedicalBusiness'     => 'MedicalBusiness',
-		'MedicalClinic'       => 'MedicalClinic (clínica médica)',
+	/**
+	 * Grupo => etiqueta de pestaña, en el orden exacto del handoff (General
+	 * primero, Librería no entra aquí porque no guarda bloques propios).
+	 */
+	const GROUPS = array(
+		'general'      => 'General',
+		'home'         => 'Home',
+		'categorias'   => 'Categorías',
+		'contenido'    => 'Contenido',
+		'autor'        => 'Página de autor',
+		'corporativas' => 'Páginas corporativas',
+		'tags'         => 'Tags',
+	);
+
+	/** Grupo => @type de la librería con el que arranca ese grupo. */
+	const GROUP_DEFAULT_TYPE = array(
+		'general'      => 'Organization',
+		'home'         => 'WebSite',
+		'categorias'   => 'CollectionPage',
+		'contenido'    => 'Article',
+		'autor'        => 'Person',
+		'corporativas' => 'WebPage',
+		'tags'         => 'CollectionPage',
 	);
 
 	public static function init() {
 		add_action( 'admin_post_cmdroom_save_schema_settings', array( __CLASS__, 'handle_save' ) );
+		add_action( 'admin_post_cmdroom_save_schema_general', array( __CLASS__, 'handle_save_general' ) );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
+	}
+
+	public static function enqueue_assets( $hook ) {
+		if ( ! isset( $_GET['page'] ) || 'cmdroom-schema' !== $_GET['page'] ) {
+			return;
+		}
+		// Reutiliza el terminal/chip base de Metas (mismo sistema de diseño,
+		// "idéntico al de Meta data" según el handoff) y añade encima lo
+		// propio de esta pantalla (chips múltiples, menú "+ Añadir",
+		// Librería).
+		wp_enqueue_style( 'cmdroom-meta-editor', CMDROOM_URL . 'assets/css/meta-editor.css', array(), CMDROOM_VERSION );
+		wp_enqueue_style( 'cmdroom-schema-editor', CMDROOM_URL . 'assets/css/schema-editor.css', array( 'cmdroom-meta-editor' ), CMDROOM_VERSION );
+		wp_enqueue_script( 'cmdroom-schema-editor', CMDROOM_URL . 'assets/js/schema-editor.js', array(), CMDROOM_VERSION, true );
 	}
 
 	public static function is_live_output_enabled() {
@@ -37,219 +73,84 @@ class Cmdroom_Schema_Settings {
 
 	public static function get_options() {
 		$saved = get_option( self::OPTION, array() );
-		$saved = self::migrate_legacy( $saved );
+		if ( ! is_array( $saved ) ) {
+			$saved = array();
+		}
 		return wp_parse_args( $saved, self::defaults() );
 	}
 
+	/**
+	 * @return array Lista de bloques `{ id, type, json }` del grupo, o array
+	 *               vacío si el grupo no existe o no tiene ninguno.
+	 */
+	public static function get_group_blocks( $group ) {
+		$opts = self::get_options();
+		return isset( $opts['groups'][ $group ] ) && is_array( $opts['groups'][ $group ] ) ? $opts['groups'][ $group ] : array();
+	}
+
+	/**
+	 * Nombre y logo del negocio para el fallback de %organization%/%image%
+	 * de Metas (Cmdroom_Meta_Variables/Cmdroom_Meta_Resolver). Ya no es un
+	 * formulario de campos propio -- se lee directamente del primer bloque
+	 * Organization/LocalBusiness de la pestaña General, para no mantener el
+	 * mismo dato en dos sitios. Si Damien no ha rellenado "logo" en ese
+	 * bloque, cae a '' (sin logo); si no ha tocado "name", cae al título del
+	 * sitio.
+	 */
 	public static function get_business() {
-		$opts = self::get_options();
-		return $opts['business'];
-	}
-
-	public static function get_post_type_schema( $post_type ) {
-		$opts = self::get_options();
-		if ( isset( $opts['post_types'][ $post_type ] ) ) {
-			return $opts['post_types'][ $post_type ];
-		}
-		return 'page' === $post_type ? self::default_webpage_block() : self::default_article_block();
-	}
-
-	public static function get_taxonomy_schema( $taxonomy ) {
-		$opts = self::get_options();
-		if ( isset( $opts['taxonomies'][ $taxonomy ] ) ) {
-			return $opts['taxonomies'][ $taxonomy ];
-		}
-		return self::default_collectionpage_block();
-	}
-
-	public static function get_author_archive_schema() {
-		$opts = self::get_options();
-		return isset( $opts['author_archive'] ) ? $opts['author_archive'] : self::default_profilepage_block();
-	}
-
-	/**
-	 * Convierte cualquier dato guardado con el modelo viejo (un string
-	 * simple con el @type, ej. 'Article') al bloque JSON completo, usando
-	 * ese mismo @type -- no se pierde lo que ya estuviera elegido. Las
-	 * taxonomías no tenían modelo viejo (siempre CollectionPage fijo en
-	 * PHP), así que no hay nada que migrar ahí.
-	 */
-	private static function migrate_legacy( $saved ) {
-		if ( ! is_array( $saved ) ) {
-			return $saved;
-		}
-
-		if ( ! empty( $saved['post_types'] ) && is_array( $saved['post_types'] ) ) {
-			foreach ( $saved['post_types'] as $pt_name => $value ) {
-				if ( is_string( $value ) && '' !== $value && false === strpos( ltrim( $value ), '{' ) ) {
-					$saved['post_types'][ $pt_name ] = 'WebPage' === $value
-						? self::default_webpage_block( $value )
-						: self::default_article_block( $value );
-				}
+		foreach ( self::get_group_blocks( 'general' ) as $block ) {
+			if ( ! in_array( $block['type'], array( 'Organization', 'LocalBusiness' ), true ) ) {
+				continue;
 			}
+			$resolved = Cmdroom_Schema_Variables::replace( $block['json'], array() );
+			$node     = json_decode( $resolved, true );
+			if ( ! is_array( $node ) ) {
+				continue;
+			}
+			$logo = isset( $node['logo'] ) ? $node['logo'] : '';
+			if ( is_array( $logo ) ) {
+				$logo = isset( $logo['url'] ) ? $logo['url'] : '';
+			}
+			return array(
+				'name' => ! empty( $node['name'] ) ? (string) $node['name'] : get_bloginfo( 'name' ),
+				'logo' => (string) $logo,
+			);
 		}
-
-		if ( isset( $saved['author_archive'] ) && is_string( $saved['author_archive'] ) && '' !== $saved['author_archive'] && false === strpos( ltrim( $saved['author_archive'] ), '{' ) ) {
-			$saved['author_archive'] = self::default_profilepage_block( $saved['author_archive'] );
-		}
-
-		return $saved;
-	}
-
-	/**
-	 * Bloque JSON para tipos de contenido "artículo" (posts, entradas de
-	 * blog...) -- equivalente al nodo que antes construía en PHP
-	 * Cmdroom_Schema_Builder::build_for_post(). Si el tipo es 'BlogPosting'
-	 * añade wordCount/timeRequired/keywords, igual que hacía antes
-	 * blog_posting_extras() -- para que migrar un tipo que ya tenía
-	 * 'BlogPosting' elegido no pierda esos campos.
-	 */
-	private static function default_article_block( $type = 'Article' ) {
-		$extra = '';
-		if ( 'BlogPosting' === $type ) {
-			$extra = ",\n  \"wordCount\": %schema_word_count%,\n  \"timeRequired\": \"%schema_time_required%\",\n  \"keywords\": \"%schema_keywords%\"";
-		}
-
-		return '{
-  "@type": "' . $type . '",
-  "@id": "%schema_url%#' . strtolower( $type ) . '",
-  "headline": "%schema_headline%",
-  "name": "%schema_headline%",
-  "description": "%schema_description%",
-  "url": "%schema_url%",
-  "inLanguage": "%schema_lang%",
-  "datePublished": "%schema_date_published%",
-  "dateModified": "%schema_date_modified%",
-  "isPartOf": { "@id": "%schema_website_id%" },
-  "mainEntityOfPage": "%schema_url%",
-  "publisher": { "@id": "%schema_organization_id%" },
-  "author": { "@type": "Person", "@id": "%schema_author_url%#person", "name": "%schema_author_name%", "url": "%schema_author_url%" }' . $extra . '
-}';
-	}
-
-	/**
-	 * Bloque JSON para páginas corporativas -- sin author/fechas de
-	 * publicación, igual que hacía la lógica condicional vieja.
-	 */
-	private static function default_webpage_block( $type = 'WebPage' ) {
-		return '{
-  "@type": "' . $type . '",
-  "@id": "%schema_url%#' . strtolower( $type ) . '",
-  "name": "%schema_headline%",
-  "description": "%schema_description%",
-  "url": "%schema_url%",
-  "inLanguage": "%schema_lang%",
-  "isPartOf": { "@id": "%schema_website_id%" },
-  "mainEntityOfPage": "%schema_url%",
-  "publisher": { "@id": "%schema_organization_id%" }
-}';
-	}
-
-	/**
-	 * Bloque JSON para taxonomías -- equivalente al CollectionPage que antes
-	 * era un array literal fijo en build_for_term().
-	 */
-	private static function default_collectionpage_block() {
-		return '{
-  "@type": "CollectionPage",
-  "@id": "%schema_url%#collectionpage",
-  "name": "%schema_headline%",
-  "description": "%schema_description%",
-  "url": "%schema_url%",
-  "inLanguage": "%schema_lang%",
-  "isPartOf": { "@id": "%schema_website_id%" }
-}';
-	}
-
-	/**
-	 * Bloque JSON para la página de autor -- ProfilePage es el tipo
-	 * recomendado por Schema.org para páginas de perfil.
-	 */
-	private static function default_profilepage_block( $type = 'ProfilePage' ) {
-		return '{
-  "@type": "' . $type . '",
-  "@id": "%schema_url%#' . strtolower( $type ) . '",
-  "name": "%schema_headline%",
-  "description": "%schema_description%",
-  "url": "%schema_url%",
-  "inLanguage": "%schema_lang%",
-  "isPartOf": { "@id": "%schema_website_id%" },
-  "mainEntityOfPage": "%schema_url%",
-  "publisher": { "@id": "%schema_organization_id%" }
-}';
+		return array( 'name' => get_bloginfo( 'name' ), 'logo' => '' );
 	}
 
 	private static function defaults() {
-		$post_types = array();
-		foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) {
-			$post_types[ $pt->name ] = 'page' === $pt->name
-				? self::default_webpage_block()
-				: self::default_article_block();
-		}
-
-		$taxonomies = array();
-		foreach ( Cmdroom_Meta_Settings::public_taxonomies() as $tax ) {
-			$taxonomies[ $tax->name ] = self::default_collectionpage_block();
+		$groups = array();
+		foreach ( array_keys( self::GROUPS ) as $group ) {
+			$type            = self::GROUP_DEFAULT_TYPE[ $group ];
+			$groups[ $group ] = array( self::new_block( $type ) );
 		}
 
 		return array(
 			'live_output' => false,
-			'business'    => array(
-				'type'      => 'Organization',
-				'name'      => get_bloginfo( 'name' ),
-				'logo'      => '',
-				'telephone' => '',
-				'street'    => '',
-				'locality'  => '',
-				'region'    => '',
-				'postal'    => '',
-				'country'   => 'ES',
-				'sameas'    => '',
-			),
-			'post_types'     => $post_types,
-			'taxonomies'     => $taxonomies,
-			'author_archive' => self::default_profilepage_block(),
+			'groups'      => $groups,
 		);
 	}
 
-	public static function handle_save() {
+	private static function new_block( $type ) {
+		$library = self::library();
+		return array(
+			'id'   => wp_generate_uuid4(),
+			'type' => $type,
+			'json' => isset( $library[ $type ] ) ? $library[ $type ]['json'] : '{
+  "@type": "' . $type . '"
+}',
+		);
+	}
+
+	public static function handle_save_general() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'command-room' ) );
 		}
-		check_admin_referer( 'cmdroom_save_schema_settings' );
+		check_admin_referer( 'cmdroom_save_schema_general' );
 
-		$opts = self::defaults();
+		$opts                = self::get_options();
 		$opts['live_output'] = ! empty( $_POST['live_output'] );
-
-		foreach ( array_keys( $opts['business'] ) as $field ) {
-			if ( isset( $_POST[ 'business_' . $field ] ) ) {
-				$value = wp_unslash( $_POST[ 'business_' . $field ] );
-				$opts['business'][ $field ] = 'sameas' === $field
-					? sanitize_textarea_field( $value )
-					: sanitize_text_field( $value );
-			}
-		}
-
-		// Bloques JSON: guardado sin sanitizar de más -- mismo criterio que
-		// los bloques de <head> de Metas (ver Cmdroom_Meta_Settings::handle_save()),
-		// contenido de admin de confianza detrás de manage_options + nonce.
-		foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) {
-			$key = 'pt_schema_' . $pt->name . '_json';
-			if ( isset( $_POST[ $key ] ) ) {
-				$opts['post_types'][ $pt->name ] = wp_unslash( $_POST[ $key ] );
-			}
-		}
-
-		foreach ( Cmdroom_Meta_Settings::public_taxonomies() as $tax ) {
-			$key = 'tax_schema_' . $tax->name . '_json';
-			if ( isset( $_POST[ $key ] ) ) {
-				$opts['taxonomies'][ $tax->name ] = wp_unslash( $_POST[ $key ] );
-			}
-		}
-
-		if ( isset( $_POST['author_archive_schema_json'] ) ) {
-			$opts['author_archive'] = wp_unslash( $_POST['author_archive_schema_json'] );
-		}
 
 		update_option( self::OPTION, $opts );
 
@@ -257,158 +158,496 @@ class Cmdroom_Schema_Settings {
 		exit;
 	}
 
+	public static function render_general_section() {
+		$opts = self::get_options();
+		?>
+		<h2><?php esc_html_e( 'Datos estructurados', 'command-room' ); ?></h2>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<?php wp_nonce_field( 'cmdroom_save_schema_general' ); ?>
+			<input type="hidden" name="action" value="cmdroom_save_schema_general" />
+			<table class="form-table">
+				<tr>
+					<th><?php esc_html_e( 'Salida en el sitio', 'command-room' ); ?></th>
+					<td>
+						<label>
+							<input type="checkbox" name="live_output" value="1" <?php checked( $opts['live_output'] ); ?> />
+							<?php esc_html_e( 'Activar la impresión real del @graph JSON-LD (déjalo apagado mientras comparas contra Rank Math + EEAT Author)', 'command-room' ); ?>
+						</label>
+					</td>
+				</tr>
+			</table>
+			<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
+		</form>
+		<?php
+	}
+
+	/**
+	 * Guarda el estado completo (los 7 grupos, cada uno con su lista de
+	 * bloques) desde el único campo `schema_state` -- un blob JSON que
+	 * mantiene sincronizado assets/js/schema-editor.js en cada cambio
+	 * (añadir/quitar/editar un bloque, ver su docblock). Un blob y no un
+	 * campo por bloque porque el número de bloques por grupo es variable
+	 * (0, 1 o varios) y no se conoce de antemano en el servidor.
+	 *
+	 * Si el blob no es JSON válido (fallo de JS o manipulación directa del
+	 * POST) no se guarda nada -- mejor dejar la config anterior intacta que
+	 * guardar a medias. Si el blob es válido pero un bloque concreto tiene
+	 * un JSON-LD inválido, SÍ se guarda tal cual (igual que Metas guarda
+	 * HTML tal cual) -- el error solo se ve al imprimirlo
+	 * (Cmdroom_Schema_Builder::resolve_node() lo salta sin romper la
+	 * página).
+	 */
+	public static function handle_save() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'command-room' ) );
+		}
+		check_admin_referer( 'cmdroom_save_schema_settings' );
+
+		if ( ! isset( $_POST['schema_state'] ) ) {
+			wp_safe_redirect( add_query_arg( 'cmdroom_saved', '1', wp_get_referer() ) );
+			exit;
+		}
+
+		$decoded = json_decode( wp_unslash( $_POST['schema_state'] ), true );
+
+		if ( ! is_array( $decoded ) ) {
+			wp_safe_redirect( add_query_arg( 'cmdroom_schema_error', '1', wp_get_referer() ) );
+			exit;
+		}
+
+		$opts   = self::get_options();
+		$groups = array();
+
+		foreach ( array_keys( self::GROUPS ) as $group ) {
+			$blocks = isset( $decoded[ $group ] ) && is_array( $decoded[ $group ] ) ? $decoded[ $group ] : array();
+			$clean  = array();
+			foreach ( $blocks as $block ) {
+				if ( ! is_array( $block ) || ! isset( $block['json'] ) ) {
+					continue;
+				}
+				$clean[] = array(
+					'id'   => isset( $block['id'] ) ? sanitize_key( $block['id'] ) : wp_generate_uuid4(),
+					// El @type es metadato para el chip/la Librería, no pasa
+					// por el JSON -- texto de admin de confianza, mismo
+					// criterio que el propio bloque JSON.
+					'type' => isset( $block['type'] ) ? sanitize_text_field( $block['type'] ) : '',
+					'json' => (string) $block['json'],
+				);
+			}
+			$groups[ $group ] = $clean;
+		}
+
+		$opts['groups'] = $groups;
+		update_option( self::OPTION, $opts );
+
+		wp_safe_redirect( add_query_arg( 'cmdroom_saved', '1', wp_get_referer() ) );
+		exit;
+	}
+
+	/**
+	 * Catálogo de los 21 tipos de la Librería: @type => label/descripción
+	 * (texto del handoff) + un JSON de partida. Las variables %schema_*%
+	 * cubren lo que varía por página; lo que es un dato fijo sin variable
+	 * equivalente (precio, SKU, horario, salario...) se deja en blanco para
+	 * que Damien lo rellene a mano -- Cmdroom_Schema_Builder::resolve_node()
+	 * quita del nodo cualquier campo que quede vacío.
+	 */
+	public static function library() {
+		return array(
+			'Organization'        => array(
+				'label'       => 'Organization',
+				'description' => 'Identidad de la empresa: nombre, logo, redes sociales y contacto.',
+				'json'        => self::pretty( array(
+					'@type' => 'Organization',
+					'@id'   => '%schema_organization_id%',
+					'name'  => '%schema_sitename%',
+					'url'   => '%schema_site_url%',
+					'logo'  => '',
+					'sameAs' => array(),
+				) ),
+			),
+			'LocalBusiness'       => array(
+				'label'       => 'LocalBusiness',
+				'description' => 'Negocio físico con dirección, horario y geolocalización.',
+				'json'        => self::pretty( array(
+					'@type'      => 'LocalBusiness',
+					'@id'        => '%schema_organization_id%',
+					'name'       => '%schema_sitename%',
+					'url'        => '%schema_site_url%',
+					'telephone'  => '',
+					'image'      => '',
+					'address'    => array(
+						'@type'           => 'PostalAddress',
+						'streetAddress'   => '',
+						'addressLocality' => '',
+						'addressRegion'   => '',
+						'postalCode'      => '',
+						'addressCountry'  => 'ES',
+					),
+					'openingHours' => '',
+				) ),
+			),
+			'WebSite'             => array(
+				'label'       => 'WebSite',
+				'description' => 'Sitio web completo, con caja de búsqueda (SearchAction).',
+				'json'        => self::pretty( array(
+					'@type'           => 'WebSite',
+					'@id'             => '%schema_website_id%',
+					'url'             => '%schema_site_url%',
+					'name'            => '%schema_sitename%',
+					'inLanguage'      => '%schema_lang%',
+					'publisher'       => array( '@id' => '%schema_organization_id%' ),
+					'potentialAction' => array(
+						'@type'       => 'SearchAction',
+						'target'      => array(
+							'@type'       => 'EntryPoint',
+							'urlTemplate' => '%schema_site_url%?s={search_term_string}',
+						),
+						'query-input' => 'required name=search_term_string',
+					),
+				) ),
+			),
+			'WebPage'             => array(
+				'label'       => 'WebPage',
+				'description' => 'Página genérica: título, descripción y fecha de actualización.',
+				'json'        => self::pretty( array(
+					'@type'             => 'WebPage',
+					'@id'               => '%schema_url%#webpage',
+					'name'              => '%schema_headline%',
+					'description'       => '%schema_description%',
+					'url'               => '%schema_url%',
+					'inLanguage'        => '%schema_lang%',
+					'isPartOf'          => array( '@id' => '%schema_website_id%' ),
+					'mainEntityOfPage'  => '%schema_url%',
+					'publisher'         => array( '@id' => '%schema_organization_id%' ),
+				) ),
+			),
+			'CollectionPage'      => array(
+				'label'       => 'CollectionPage',
+				'description' => 'Listados: categorías, etiquetas y archivos.',
+				'json'        => self::pretty( array(
+					'@type'      => 'CollectionPage',
+					'@id'        => '%schema_url%#collectionpage',
+					'name'       => '%schema_headline%',
+					'description' => '%schema_description%',
+					'url'        => '%schema_url%',
+					'inLanguage' => '%schema_lang%',
+					'isPartOf'   => array( '@id' => '%schema_website_id%' ),
+				) ),
+			),
+			'Article'             => array(
+				'label'       => 'Article',
+				'description' => 'Artículos y entradas de blog con autor y fecha.',
+				'json'        => self::pretty( array(
+					'@type'            => 'Article',
+					'@id'              => '%schema_url%#article',
+					'headline'         => '%schema_headline%',
+					'name'             => '%schema_headline%',
+					'description'      => '%schema_description%',
+					'url'              => '%schema_url%',
+					'inLanguage'       => '%schema_lang%',
+					'datePublished'    => '%schema_date_published%',
+					'dateModified'     => '%schema_date_modified%',
+					'image'            => '%schema_image%',
+					'isPartOf'         => array( '@id' => '%schema_website_id%' ),
+					'mainEntityOfPage' => '%schema_url%',
+					'publisher'        => array( '@id' => '%schema_organization_id%' ),
+					'author'           => array(
+						'@type' => 'Person',
+						'@id'   => '%schema_author_url%#person',
+						'name'  => '%schema_author_name%',
+						'url'   => '%schema_author_url%',
+					),
+				) ),
+			),
+			'NewsArticle'         => array(
+				'label'       => 'NewsArticle',
+				'description' => 'Noticias con fecha de publicación y editor.',
+				'json'        => self::pretty( array(
+					'@type'            => 'NewsArticle',
+					'@id'              => '%schema_url%#newsarticle',
+					'headline'         => '%schema_headline%',
+					'description'      => '%schema_description%',
+					'url'              => '%schema_url%',
+					'inLanguage'       => '%schema_lang%',
+					'datePublished'    => '%schema_date_published%',
+					'dateModified'     => '%schema_date_modified%',
+					'image'            => '%schema_image%',
+					'isPartOf'         => array( '@id' => '%schema_website_id%' ),
+					'mainEntityOfPage' => '%schema_url%',
+					'publisher'        => array( '@id' => '%schema_organization_id%' ),
+					'author'           => array(
+						'@type' => 'Person',
+						'name'  => '%schema_author_name%',
+						'url'   => '%schema_author_url%',
+					),
+				) ),
+			),
+			'Person'              => array(
+				'label'       => 'Person',
+				'description' => 'Autor o persona: nombre, imagen y perfiles.',
+				'json'        => self::pretty( array(
+					'@type'       => 'Person',
+					'@id'         => '%schema_url%#person',
+					'name'        => '%schema_author_name%',
+					'url'         => '%schema_url%',
+					'description' => '%schema_description%',
+					'image'       => '',
+					'sameAs'      => array(),
+				) ),
+			),
+			'BreadcrumbList'      => array(
+				'label'       => 'BreadcrumbList',
+				'description' => 'Migas de pan de la jerarquía de la página.',
+				'json'        => '{
+  "@type": "BreadcrumbList",
+  "@id": "%schema_url%#breadcrumb",
+  "itemListElement": %schema_breadcrumb_items%
+}',
+			),
+			'FAQPage'             => array(
+				'label'       => 'FAQPage',
+				'description' => 'Preguntas frecuentes con sus respuestas.',
+				'json'        => self::pretty( array(
+					'@type'      => 'FAQPage',
+					'@id'        => '%schema_url%#faq',
+					'mainEntity' => array(
+						array(
+							'@type'          => 'Question',
+							'name'           => '',
+							'acceptedAnswer' => array( '@type' => 'Answer', 'text' => '' ),
+						),
+					),
+				) ),
+			),
+			'HowTo'               => array(
+				'label'       => 'HowTo',
+				'description' => 'Guías paso a paso con herramientas y tiempo.',
+				'json'        => self::pretty( array(
+					'@type'       => 'HowTo',
+					'@id'         => '%schema_url%#howto',
+					'name'        => '%schema_headline%',
+					'description' => '%schema_description%',
+					'totalTime'   => '',
+					'step'        => array(
+						array( '@type' => 'HowToStep', 'name' => '', 'text' => '' ),
+					),
+				) ),
+			),
+			'Product'             => array(
+				'label'       => 'Product',
+				'description' => 'Producto con precio, SKU y disponibilidad.',
+				'json'        => self::pretty( array(
+					'@type'       => 'Product',
+					'@id'         => '%schema_url%#product',
+					'name'        => '%schema_headline%',
+					'description' => '%schema_description%',
+					'image'       => '%schema_image%',
+					'sku'         => '',
+					'brand'       => array( '@type' => 'Brand', 'name' => '' ),
+				) ),
+			),
+			'Offer'               => array(
+				'label'       => 'Offer',
+				'description' => 'Oferta o precio asociado a un producto.',
+				'json'        => self::pretty( array(
+					'@type'         => 'Offer',
+					'@id'           => '%schema_url%#offer',
+					'url'           => '%schema_url%',
+					'price'         => '',
+					'priceCurrency' => 'EUR',
+					'availability'  => 'https://schema.org/InStock',
+				) ),
+			),
+			'Review'              => array(
+				'label'       => 'Review',
+				'description' => 'Reseña individual con valoración.',
+				'json'        => self::pretty( array(
+					'@type'        => 'Review',
+					'@id'          => '%schema_url%#review',
+					'author'       => array( '@type' => 'Person', 'name' => '' ),
+					'reviewRating' => array( '@type' => 'Rating', 'ratingValue' => '', 'bestRating' => '5' ),
+					'reviewBody'   => '',
+				) ),
+			),
+			'AggregateRating'     => array(
+				'label'       => 'AggregateRating',
+				'description' => 'Valoración media a partir de varias reseñas.',
+				'json'        => self::pretty( array(
+					'@type'       => 'AggregateRating',
+					'ratingValue' => '',
+					'reviewCount' => '',
+					'bestRating'  => '5',
+				) ),
+			),
+			'Event'               => array(
+				'label'       => 'Event',
+				'description' => 'Evento con fecha, lugar y entradas.',
+				'json'        => self::pretty( array(
+					'@type'               => 'Event',
+					'@id'                 => '%schema_url%#event',
+					'name'                => '%schema_headline%',
+					'startDate'           => '',
+					'endDate'             => '',
+					'eventAttendanceMode' => 'https://schema.org/OfflineEventAttendanceMode',
+					'eventStatus'         => 'https://schema.org/EventScheduled',
+					'location'            => array( '@type' => 'Place', 'name' => '', 'address' => '' ),
+				) ),
+			),
+			'VideoObject'         => array(
+				'label'       => 'VideoObject',
+				'description' => 'Vídeo con miniatura, duración y fecha.',
+				'json'        => self::pretty( array(
+					'@type'        => 'VideoObject',
+					'@id'          => '%schema_url%#video',
+					'name'         => '%schema_headline%',
+					'description'  => '%schema_description%',
+					'thumbnailUrl' => '%schema_image%',
+					'uploadDate'   => '%schema_date_published%',
+					'duration'     => '',
+				) ),
+			),
+			'Recipe'              => array(
+				'label'       => 'Recipe',
+				'description' => 'Receta con ingredientes, tiempos y calorías.',
+				'json'        => self::pretty( array(
+					'@type'              => 'Recipe',
+					'@id'                => '%schema_url%#recipe',
+					'name'               => '%schema_headline%',
+					'description'        => '%schema_description%',
+					'image'              => '%schema_image%',
+					'totalTime'          => '',
+					'recipeYield'        => '',
+					'recipeIngredient'   => array(),
+					'recipeInstructions' => array(),
+				) ),
+			),
+			'JobPosting'          => array(
+				'label'       => 'JobPosting',
+				'description' => 'Oferta de empleo con salario y ubicación.',
+				'json'        => self::pretty( array(
+					'@type'              => 'JobPosting',
+					'@id'                => '%schema_url%#jobposting',
+					'title'              => '%schema_headline%',
+					'description'        => '%schema_description%',
+					'datePosted'         => '%schema_date_published%',
+					'employmentType'     => '',
+					'hiringOrganization' => array( '@type' => 'Organization', '@id' => '%schema_organization_id%' ),
+					'jobLocation'        => array( '@type' => 'Place', 'address' => '' ),
+				) ),
+			),
+			'Course'              => array(
+				'label'       => 'Course',
+				'description' => 'Curso formativo con proveedor.',
+				'json'        => self::pretty( array(
+					'@type'       => 'Course',
+					'@id'         => '%schema_url%#course',
+					'name'        => '%schema_headline%',
+					'description' => '%schema_description%',
+					'provider'    => array( '@type' => 'Organization', '@id' => '%schema_organization_id%' ),
+				) ),
+			),
+			'SoftwareApplication' => array(
+				'label'       => 'SoftwareApplication',
+				'description' => 'Aplicación o software con sistema operativo y precio.',
+				'json'        => self::pretty( array(
+					'@type'               => 'SoftwareApplication',
+					'@id'                 => '%schema_url%#softwareapplication',
+					'name'                => '%schema_headline%',
+					'operatingSystem'     => '',
+					'applicationCategory' => '',
+					'offers'              => array( '@type' => 'Offer', 'price' => '', 'priceCurrency' => 'EUR' ),
+				) ),
+			),
+		);
+	}
+
+	/**
+	 * JSON legible (indentado, sin escapar barras/unicode) para los
+	 * esqueletos de la Librería -- se generan una vez desde arrays PHP en
+	 * vez de escribirse a mano como texto para no arrastrar comas/llaves mal
+	 * cerradas en 21 bloques distintos.
+	 */
+	private static function pretty( $data ) {
+		return wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+	}
+
+	/**
+	 * El shell es PHP (pestañas, cabecera, botón Guardar); el contenido de
+	 * cada pestaña (chips, terminal, menú "+ Añadir", cuadrícula de
+	 * Librería) lo pinta entero assets/js/schema-editor.js a partir de los
+	 * dos bloques de datos que se embeben aquí -- el estado guardado
+	 * (`cmdroom-schema-state`) y el catálogo de la Librería
+	 * (`cmdroom-schema-library`), como JSON dentro de
+	 * <script type="application/json">, nunca ejecutado, solo leído con
+	 * JSON.parse(). No se sirve slashes sin escapar (sin
+	 * JSON_UNESCAPED_SLASHES) a propósito: así un "</script>" dentro de un
+	 * bloque guardado nunca puede cerrar la etiqueta antes de tiempo.
+	 */
 	public static function render_page() {
 		$opts = self::get_options();
-		$b    = $opts['business'];
-		?>
-		<div class="wrap cmdroom-wrap">
-			<h1><?php esc_html_e( 'Datos estructurados', 'command-room' ); ?></h1>
 
+		$tabs = self::GROUPS;
+
+		$variables = array(
+			'%title%', '%sitename%', '%sitedesc%', '%sep%', '%excerpt%', '%category%',
+			'%author_name%', '%date%', '%currentyear%', '%page%', '%term_title%',
+			'%term_description%', '%url%', '%robots%', '%image%', '%keywords%',
+		);
+		?>
+		<div class="wrap cmdroom-wrap cmdroom-metadata-wrap cmdroom-schema-wrap">
 			<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
 				<div class="notice notice-success"><p><?php esc_html_e( 'Ajustes guardados.', 'command-room' ); ?></p></div>
 			<?php endif; ?>
+			<?php if ( isset( $_GET['cmdroom_schema_error'] ) ) : ?>
+				<div class="notice notice-error"><p><?php esc_html_e( 'No se ha podido guardar: el estado enviado no es JSON válido. Nada se ha sobrescrito.', 'command-room' ); ?></p></div>
+			<?php endif; ?>
 
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<?php wp_nonce_field( 'cmdroom_save_schema_settings' ); ?>
-				<input type="hidden" name="action" value="cmdroom_save_schema_settings" />
+			<h1 class="cmdroom-md-h1"><?php esc_html_e( 'Datos estructurados', 'command-room' ); ?></h1>
 
-				<h2><?php esc_html_e( 'General', 'command-room' ); ?></h2>
-				<table class="form-table">
-					<tr>
-						<th><?php esc_html_e( 'Salida en el sitio', 'command-room' ); ?></th>
-						<td>
-							<label>
-								<input type="checkbox" name="live_output" value="1" <?php checked( $opts['live_output'] ); ?> />
-								<?php esc_html_e( 'Activar la impresión real del @graph JSON-LD (déjalo apagado mientras compares contra Rank Math + EEAT Author)', 'command-room' ); ?>
-							</label>
-						</td>
-					</tr>
-				</table>
-
-				<h2><?php esc_html_e( 'Negocio / Organización (aparece en todas las páginas)', 'command-room' ); ?></h2>
-				<table class="form-table">
-					<tr>
-						<th><label for="business_type"><?php esc_html_e( 'Tipo de schema', 'command-room' ); ?></label></th>
-						<td>
-							<select id="business_type" name="business_type">
-								<?php foreach ( self::BUSINESS_TYPES as $type => $label ) : ?>
-									<option value="<?php echo esc_attr( $type ); ?>" <?php selected( $b['type'], $type ); ?>><?php echo esc_html( $label ); ?></option>
-								<?php endforeach; ?>
-							</select>
-						</td>
-					</tr>
-					<tr><th><label for="business_name"><?php esc_html_e( 'Nombre', 'command-room' ); ?></label></th><td><input type="text" id="business_name" name="business_name" value="<?php echo esc_attr( $b['name'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_logo"><?php esc_html_e( 'URL del logo', 'command-room' ); ?></label></th><td><input type="text" id="business_logo" name="business_logo" value="<?php echo esc_attr( $b['logo'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_telephone"><?php esc_html_e( 'Teléfono', 'command-room' ); ?></label></th><td><input type="text" id="business_telephone" name="business_telephone" value="<?php echo esc_attr( $b['telephone'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_street"><?php esc_html_e( 'Dirección (calle)', 'command-room' ); ?></label></th><td><input type="text" id="business_street" name="business_street" value="<?php echo esc_attr( $b['street'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_locality"><?php esc_html_e( 'Localidad', 'command-room' ); ?></label></th><td><input type="text" id="business_locality" name="business_locality" value="<?php echo esc_attr( $b['locality'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_region"><?php esc_html_e( 'Provincia', 'command-room' ); ?></label></th><td><input type="text" id="business_region" name="business_region" value="<?php echo esc_attr( $b['region'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_postal"><?php esc_html_e( 'Código postal', 'command-room' ); ?></label></th><td><input type="text" id="business_postal" name="business_postal" value="<?php echo esc_attr( $b['postal'] ); ?>" class="regular-text" /></td></tr>
-					<tr><th><label for="business_country"><?php esc_html_e( 'País (ISO 2 letras)', 'command-room' ); ?></label></th><td><input type="text" id="business_country" name="business_country" value="<?php echo esc_attr( $b['country'] ); ?>" class="small-text" maxlength="2" /></td></tr>
-					<tr>
-						<th><label for="business_sameas"><?php esc_html_e( 'Perfiles sociales (sameAs)', 'command-room' ); ?></label></th>
-						<td><textarea id="business_sameas" name="business_sameas" class="large-text" rows="4" placeholder="<?php esc_attr_e( 'Una URL por línea', 'command-room' ); ?>"><?php echo esc_textarea( $b['sameas'] ); ?></textarea></td>
-					</tr>
-				</table>
-
-				<h2><?php esc_html_e( 'Nodo de schema por tipo de contenido', 'command-room' ); ?></h2>
-				<p class="description">
-					<?php esc_html_e( 'Cada bloque es UN nodo dentro del único @graph JSON-LD de la página (junto a Organization, WebSite y BreadcrumbList, que no cambian) -- nunca un <script> independiente. Variables:', 'command-room' ); ?>
-					<code>%schema_headline%</code> <code>%schema_description%</code> <code>%schema_url%</code> <code>%schema_lang%</code>
-					<code>%schema_date_published%</code> <code>%schema_date_modified%</code> <code>%schema_author_name%</code> <code>%schema_author_url%</code>
-					<code>%schema_image%</code> <code>%schema_word_count%</code> <code>%schema_time_required%</code> <code>%schema_keywords%</code>
-					<code>%schema_organization_id%</code> <code>%schema_website_id%</code>
-					— <?php esc_html_e( 'ver el glosario completo en SEO → Variables.', 'command-room' ); ?>
+			<div class="cmdroom-md-container">
+				<p class="cmdroom-md-intro">
+					<?php esc_html_e( 'El bloque JSON-LD se imprime en el <head> de cada página según su tipo de contenido. Configura los campos a continuación:', 'command-room' ); ?>
 				</p>
 
-				<?php
-				$schema_tabs = array(
-					'contenido'    => __( 'Contenido', 'command-room' ),
-					'corporativas' => __( 'Páginas corporativas', 'command-room' ),
-					'categorias'   => __( 'Categorías', 'command-room' ),
-					'tags'         => __( 'Tags', 'command-room' ),
-					'autor'        => __( 'Página de autor', 'command-room' ),
-				);
-				$active_tab = Cmdroom_Admin_Menu::get_active_tab( $schema_tabs );
-				$page_slug  = 'cmdroom-schema';
-				Cmdroom_Admin_Menu::render_tab_nav( $schema_tabs, $active_tab, $page_slug );
-				?>
+				<details class="cmdroom-md-vars">
+					<summary><?php esc_html_e( 'Ver variables disponibles', 'command-room' ); ?></summary>
+					<div class="cmdroom-md-vars-row">
+						<?php foreach ( $variables as $var ) : ?>
+							<span class="cmdroom-md-chip"><?php echo esc_html( $var ); ?></span>
+						<?php endforeach; ?>
+					</div>
+				</details>
 
-				<div class="cmdroom-tab-panel" data-tab="contenido" <?php echo 'contenido' === $active_tab ? '' : 'style="display:none;"'; ?>>
-					<?php self::render_post_type_schema_table( Cmdroom_Meta_Settings::content_post_types(), $opts ); ?>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="cmdroom-schema-form">
+					<?php wp_nonce_field( 'cmdroom_save_schema_settings' ); ?>
+					<input type="hidden" name="action" value="cmdroom_save_schema_settings" />
+					<input type="hidden" name="schema_state" id="cmdroom-schema-state" value="" />
+
+					<div class="cmdroom-schema-tabs" id="cmdroom-schema-tabs">
+						<?php foreach ( $tabs as $key => $label ) : ?>
+							<button type="button" class="cmdroom-md-tab" data-tab="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $label ); ?></button>
+						<?php endforeach; ?>
+						<button type="button" class="cmdroom-md-tab" data-tab="libreria"><?php esc_html_e( 'Librería', 'command-room' ); ?></button>
+					</div>
+
+					<div id="cmdroom-schema-content"></div>
+
+					<?php submit_button( __( 'Guardar', 'command-room' ), 'cmdroom-md-save', 'submit', false ); ?>
+				</form>
+
+				<div class="cmdroom-md-footer">
+					<h2 class="cmdroom-md-footer-title"><?php esc_html_e( 'Más información', 'command-room' ); ?></h2>
+					<p class="cmdroom-md-footer-text">
+						<?php esc_html_e( 'El JSON-LD se genera automáticamente a partir de estos campos y se inyecta como <script type="application/ld+json"> — sin necesidad de tocar el tema.', 'command-room' ); ?>
+					</p>
 				</div>
+			</div>
 
-				<div class="cmdroom-tab-panel" data-tab="corporativas" <?php echo 'corporativas' === $active_tab ? '' : 'style="display:none;"'; ?>>
-					<?php self::render_post_type_schema_table( Cmdroom_Meta_Settings::corporate_post_types(), $opts ); ?>
-				</div>
-
-				<div class="cmdroom-tab-panel" data-tab="categorias" <?php echo 'categorias' === $active_tab ? '' : 'style="display:none;"'; ?>>
-					<?php self::render_taxonomy_schema_table( Cmdroom_Meta_Settings::category_taxonomies(), $opts ); ?>
-				</div>
-
-				<div class="cmdroom-tab-panel" data-tab="tags" <?php echo 'tags' === $active_tab ? '' : 'style="display:none;"'; ?>>
-					<?php self::render_taxonomy_schema_table( Cmdroom_Meta_Settings::tag_taxonomies(), $opts ); ?>
-				</div>
-
-				<div class="cmdroom-tab-panel" data-tab="autor" <?php echo 'autor' === $active_tab ? '' : 'style="display:none;"'; ?>>
-					<table class="form-table">
-						<tr>
-							<th><?php esc_html_e( 'Página de autor', 'command-room' ); ?></th>
-							<td>
-								<textarea name="author_archive_schema_json" class="large-text code" rows="10"><?php echo esc_textarea( $opts['author_archive'] ); ?></textarea>
-								<p class="description"><?php esc_html_e( 'ProfilePage es el tipo recomendado por Schema.org para páginas de perfil/autor.', 'command-room' ); ?></p>
-							</td>
-						</tr>
-					</table>
-				</div>
-
-				<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
-			</form>
+			<script type="application/json" id="cmdroom-schema-state-data"><?php echo wp_json_encode( $opts['groups'], JSON_UNESCAPED_UNICODE ); ?></script>
+			<script type="application/json" id="cmdroom-schema-library-data"><?php echo wp_json_encode( self::library(), JSON_UNESCAPED_UNICODE ); ?></script>
+			<script type="application/json" id="cmdroom-schema-tabs-data"><?php echo wp_json_encode( $tabs, JSON_UNESCAPED_UNICODE ); ?></script>
 		</div>
-		<?php
-	}
-
-	/**
-	 * Tabla form-table con un textarea de bloque JSON por elemento, para un
-	 * listado de post types -- compartida entre Contenido y Páginas
-	 * corporativas.
-	 */
-	private static function render_post_type_schema_table( $post_types, $opts ) {
-		?>
-		<table class="form-table">
-			<?php foreach ( $post_types as $pt ) :
-				$current = $opts['post_types'][ $pt->name ] ?? '';
-				?>
-				<tr>
-					<th><?php echo esc_html( $pt->labels->name ); ?></th>
-					<td>
-						<textarea name="pt_schema_<?php echo esc_attr( $pt->name ); ?>_json" class="large-text code" rows="10"><?php echo esc_textarea( $current ); ?></textarea>
-					</td>
-				</tr>
-			<?php endforeach; ?>
-		</table>
-		<?php
-	}
-
-	/**
-	 * Igual que render_post_type_schema_table() pero para taxonomías --
-	 * cada categoría/etiqueta tiene su propio bloque independiente, misma
-	 * granularidad que en Metas.
-	 */
-	private static function render_taxonomy_schema_table( $taxonomies, $opts ) {
-		?>
-		<table class="form-table">
-			<?php foreach ( $taxonomies as $tax ) :
-				$current = $opts['taxonomies'][ $tax->name ] ?? '';
-				?>
-				<tr>
-					<th><?php echo esc_html( $tax->labels->name ); ?></th>
-					<td>
-						<textarea name="tax_schema_<?php echo esc_attr( $tax->name ); ?>_json" class="large-text code" rows="10"><?php echo esc_textarea( $current ); ?></textarea>
-					</td>
-				</tr>
-			<?php endforeach; ?>
-		</table>
 		<?php
 	}
 }

@@ -9,25 +9,26 @@ if ( ! defined( 'ABSPATH' ) ) {
  * repetir el error de @type incorrecto dentro de @graph que se documentó en
  * la auditoría SEO de Dripbase.
  *
- * Desde 0.10.0 el nodo específico de cada página (Article/WebPage/
- * CollectionPage/ProfilePage...) ya no se construye a mano en PHP: se lee el
- * bloque JSON editable guardado en Ajustes → Datos estructurados
- * (Cmdroom_Schema_Settings), se le pasan las variables %schema_*%
- * (Cmdroom_Schema_Variables, que ya devuelve valores pre-escapados para
- * JSON) y se decodifica. Si el resultado no es JSON válido -- typo al
- * editar a mano -- NO se rompe la página: se omite ese nodo y el @graph
- * sigue saliendo con Organization/WebSite/Breadcrumb.
+ * Desde el rediseño de Claude Design de esta pantalla, cada nodo del @graph
+ * -- incluidos Organization y WebSite, que antes se construían a mano en PHP
+ * (organization_node()/website_node(), ya retirados) -- es uno de los
+ * bloques JSON-LD editables de Cmdroom_Schema_Settings::get_group_blocks().
+ * Cada página imprime SIEMPRE los bloques del grupo "general" (sitewide,
+ * normalmente Organization) más los del grupo específico de esa página
+ * (home/categorias/contenido/autor/corporativas/tags) -- nunca más de esos
+ * dos grupos, y puede haber varios bloques dentro de cada uno (p. ej.
+ * Contenido con Article + FAQPage a la vez).
  *
- * Organization, WebSite y BreadcrumbList SÍ siguen construyéndose en PHP tal
- * cual: son estructurales y van siempre en el @graph sin importar el tipo de
- * página.
+ * Si el JSON de un bloque no es válido -- typo al editar a mano -- NO se
+ * rompe la página: se omite ese nodo y el resto del @graph sigue saliendo.
  */
 class Cmdroom_Schema_Builder {
 
 	/**
-	 * Último error de JSON inválido (si lo hubo) al resolver el nodo
-	 * específico de la página actual -- lo usa la vista previa de
-	 * Herramientas para avisar sin filtrar el error al frontend.
+	 * Errores de JSON inválido (si los hubo) al resolver los nodos de la
+	 * página actual -- lo usa la vista previa de Herramientas para avisar
+	 * sin filtrar el error al frontend. String con un mensaje por línea si
+	 * ha fallado más de un bloque.
 	 */
 	public static $last_error = '';
 
@@ -39,20 +40,13 @@ class Cmdroom_Schema_Builder {
 
 		self::$last_error = '';
 
-		$template = Cmdroom_Schema_Settings::get_post_type_schema( $post->post_type );
+		$group   = 'page' === $post->post_type ? 'corporativas' : 'contenido';
+		$context = array( 'post' => $post );
 
-		$graph = array(
-			self::organization_node(),
-			self::website_node(),
-			self::breadcrumb_node( Cmdroom_Breadcrumbs::get_items_for_post( $post ) ),
+		$graph = array_merge(
+			self::resolve_group_nodes( 'general', $context ),
+			self::resolve_group_nodes( $group, $context )
 		);
-
-		if ( '' !== trim( (string) $template ) ) {
-			$node = self::resolve_node( $template, array( 'post' => $post ), 'tipo de contenido "' . $post->post_type . '"' );
-			if ( null !== $node ) {
-				$graph[] = $node;
-			}
-		}
 
 		return array( '@context' => 'https://schema.org', '@graph' => $graph );
 	}
@@ -64,40 +58,30 @@ class Cmdroom_Schema_Builder {
 
 		self::$last_error = '';
 
-		$template = Cmdroom_Schema_Settings::get_taxonomy_schema( $term->taxonomy );
+		$group   = 'post_tag' === $term->taxonomy ? 'tags' : 'categorias';
+		$context = array( 'term' => $term );
 
-		$graph = array(
-			self::organization_node(),
-			self::website_node(),
-			self::breadcrumb_node( Cmdroom_Breadcrumbs::get_items_for_term( $term ) ),
+		$graph = array_merge(
+			self::resolve_group_nodes( 'general', $context ),
+			self::resolve_group_nodes( $group, $context )
 		);
-
-		if ( '' !== trim( (string) $template ) ) {
-			$node = self::resolve_node( $template, array( 'term' => $term ), 'taxonomía "' . $term->taxonomy . '"' );
-			if ( null !== $node ) {
-				$graph[] = $node;
-			}
-		}
 
 		return array( '@context' => 'https://schema.org', '@graph' => $graph );
 	}
 
 	public static function build_for_home() {
-		$graph = array(
-			self::organization_node(),
-			self::website_node(),
-			self::breadcrumb_node( Cmdroom_Breadcrumbs::get_items_for_home() ),
+		self::$last_error = '';
+
+		$context = array( 'is_home' => true );
+
+		$graph = array_merge(
+			self::resolve_group_nodes( 'general', $context ),
+			self::resolve_group_nodes( 'home', $context )
 		);
 
 		return array( '@context' => 'https://schema.org', '@graph' => $graph );
 	}
 
-	/**
-	 * Nuevo en 0.10.0: el archivo de autor tenía un bloque configurable en
-	 * Ajustes desde la sesión anterior, pero nunca estaba conectado a la
-	 * salida real (Cmdroom_Schema_Output::resolve_current() no cubría
-	 * is_author()). Queda cableado aquí y en Schema_Output.
-	 */
 	public static function build_for_author( $user ) {
 		if ( ! ( $user instanceof WP_User ) ) {
 			return null;
@@ -105,34 +89,42 @@ class Cmdroom_Schema_Builder {
 
 		self::$last_error = '';
 
-		$template = Cmdroom_Schema_Settings::get_author_archive_schema();
+		$context = array( 'author' => $user );
 
-		// No hay Cmdroom_Breadcrumbs::get_items_for_author() todavía, así
-		// que el archivo de autor no lleva BreadcrumbList -- limitación
-		// conocida, no se resuelve en esta sesión.
-		$graph = array(
-			self::organization_node(),
-			self::website_node(),
+		$graph = array_merge(
+			self::resolve_group_nodes( 'general', $context ),
+			self::resolve_group_nodes( 'autor', $context )
 		);
-
-		if ( '' !== trim( (string) $template ) ) {
-			$node = self::resolve_node( $template, array( 'author' => $user ), 'página de autor' );
-			if ( null !== $node ) {
-				$graph[] = $node;
-			}
-		}
 
 		return array( '@context' => 'https://schema.org', '@graph' => $graph );
 	}
 
 	/**
-	 * Resuelve el bloque JSON editable de un tipo de página: sustituye
-	 * variables %schema_*% (ya escapadas para JSON por
-	 * Cmdroom_Schema_Variables) y decodifica. Si el JSON resultante no es
-	 * válido, no rompe la página -- se omite el nodo, se deja un
-	 * error_log() y se guarda el motivo en self::$last_error para que la
-	 * vista previa de Herramientas pueda avisar (nunca se imprime ese aviso
-	 * en el frontend).
+	 * Resuelve todos los bloques de un grupo con el mismo contexto (variables
+	 * %schema_*%), omitiendo los que queden vacíos o no sean JSON válido.
+	 */
+	private static function resolve_group_nodes( $group, $context ) {
+		$nodes = array();
+		foreach ( Cmdroom_Schema_Settings::get_group_blocks( $group ) as $block ) {
+			if ( empty( $block['json'] ) || '' === trim( (string) $block['json'] ) ) {
+				continue;
+			}
+			$label = $group . ' → ' . ( ! empty( $block['type'] ) ? $block['type'] : '(sin tipo)' );
+			$node  = self::resolve_node( $block['json'], $context, $label );
+			if ( null !== $node ) {
+				$nodes[] = $node;
+			}
+		}
+		return $nodes;
+	}
+
+	/**
+	 * Resuelve el bloque JSON editable de un nodo: sustituye variables
+	 * %schema_*% (ya escapadas para JSON por Cmdroom_Schema_Variables) y
+	 * decodifica. Si el JSON resultante no es válido, no rompe la página --
+	 * se omite el nodo, se deja un error_log() y se acumula el motivo en
+	 * self::$last_error para que la vista previa de Herramientas pueda
+	 * avisar (nunca se imprime ese aviso en el frontend).
 	 */
 	private static function resolve_node( $template, $context, $label ) {
 		$resolved = Cmdroom_Schema_Variables::replace( $template, $context );
@@ -140,82 +132,29 @@ class Cmdroom_Schema_Builder {
 		$node = json_decode( $resolved, true );
 
 		if ( ! is_array( $node ) ) {
-			self::$last_error = sprintf(
+			$msg = sprintf(
 				'El bloque de datos estructurados de %1$s no es JSON válido: %2$s',
 				$label,
 				json_last_error_msg()
 			);
+			self::$last_error = self::$last_error ? self::$last_error . "\n" . $msg : $msg;
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- aviso intencional de plantilla de admin mal formada, no un error de programación.
-			error_log( '[Command Room] ' . self::$last_error );
+			error_log( '[Command Room] ' . $msg );
 			return null;
 		}
 
 		return array_filter( $node );
 	}
 
-	private static function organization_id() {
-		return home_url( '/#organization' );
-	}
-
-	private static function organization_node() {
-		$b = Cmdroom_Schema_Settings::get_business();
-
-		$node = array(
-			'@type' => $b['type'],
-			'@id'   => self::organization_id(),
-			'name'  => $b['name'],
-			'url'   => home_url( '/' ),
-		);
-
-		if ( $b['logo'] ) {
-			$node['logo']  = array( '@type' => 'ImageObject', 'url' => $b['logo'] );
-			$node['image'] = $b['logo'];
-		}
-		if ( $b['telephone'] ) {
-			$node['telephone'] = $b['telephone'];
-		}
-
-		if ( $b['street'] || $b['locality'] ) {
-			$node['address'] = array_filter( array(
-				'@type'           => 'PostalAddress',
-				'streetAddress'   => $b['street'],
-				'addressLocality' => $b['locality'],
-				'addressRegion'   => $b['region'],
-				'postalCode'      => $b['postal'],
-				'addressCountry'  => $b['country'],
-			) );
-		}
-
-		$sameas = array_filter( array_map( 'trim', explode( "\n", (string) $b['sameas'] ) ) );
-		if ( $sameas ) {
-			$node['sameAs'] = array_values( $sameas );
-		}
-
-		return array_filter( $node );
-	}
-
-	private static function website_node() {
-		return array(
-			'@type'           => 'WebSite',
-			'@id'             => home_url( '/#website' ),
-			'url'             => home_url( '/' ),
-			'name'            => get_bloginfo( 'name' ),
-			'inLanguage'      => get_bloginfo( 'language' ),
-			'publisher'       => array( '@id' => self::organization_id() ),
-			'potentialAction' => array(
-				'@type'       => 'SearchAction',
-				'target'      => array(
-					'@type'       => 'EntryPoint',
-					'urlTemplate' => home_url( '/?s={search_term_string}' ),
-				),
-				'query-input' => 'required name=search_term_string',
-			),
-		);
-	}
-
 	/**
-	 * Pública porque el módulo 19 (breadcrumbs JSON-LD globales) la reutiliza
-	 * para no duplicar la forma del nodo BreadcrumbList en dos sitios.
+	 * Pública porque el módulo 19 (breadcrumbs JSON-LD globales,
+	 * includes/breadcrumbs/class-breadcrumbs-jsonld.php) la reutiliza para
+	 * no duplicar la forma del nodo BreadcrumbList en dos sitios -- es una
+	 * salida independiente del @graph de esta pantalla, con su propio
+	 * toggle en Ajustes → Breadcrumbs. Si Damien además añade el bloque
+	 * "BreadcrumbList" de la Librería a un grupo de esta pantalla, puede
+	 * salir un BreadcrumbList duplicado; no es nuevo de este rediseño -- ya
+	 * podía pasar antes con el breadcrumb que se inyectaba siempre.
 	 */
 	public static function breadcrumb_node( $items ) {
 		$list_items = array();

@@ -18,6 +18,17 @@ class Cmdroom_Sitemap_Rewrite {
 
 	public static function init() {
 		add_action( 'template_redirect', array( __CLASS__, 'maybe_serve' ), 0 );
+		add_filter( 'wp_sitemaps_enabled', array( __CLASS__, 'maybe_disable_core_sitemaps' ) );
+	}
+
+	/**
+	 * Con la salida en el sitio activada, /wp-sitemap.xml (el sitemap
+	 * nativo de WordPress, desde 5.5) se apaga -- no compite con Rank Math
+	 * (vive en otra URL) pero sí puede acabar indexado como un sitemap
+	 * paralelo al de Command Room, con su propio criterio de qué incluye.
+	 */
+	public static function maybe_disable_core_sitemaps( $enabled ) {
+		return Cmdroom_Sitemap_Settings::is_live_output_enabled() ? false : $enabled;
 	}
 
 	public static function maybe_serve() {

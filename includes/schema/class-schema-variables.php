@@ -30,6 +30,17 @@ class Cmdroom_Schema_Variables {
 
 		$vars = self::build_vars( $context );
 
+		// %schema_breadcrumb_items% es la única excepción: no es un valor
+		// escapado para ir DENTRO de comillas, es un array JSON ya
+		// serializado (wp_json_encode()) que la plantilla inserta sin
+		// comillas -- "itemListElement": %schema_breadcrumb_items%. Se
+		// sustituye aparte para no pasar por json_escape() en build_vars(),
+		// que lo convertiría en un string y rompería el array.
+		$breadcrumb_items = $vars['schema_breadcrumb_items'];
+		unset( $vars['schema_breadcrumb_items'] );
+
+		$template = str_replace( '%schema_breadcrumb_items%', $breadcrumb_items, $template );
+
 		return preg_replace_callback(
 			'/%(schema_[a-z_]+)%/',
 			function ( $matches ) use ( $vars ) {
@@ -46,9 +57,15 @@ class Cmdroom_Schema_Variables {
 		$is_home = ! empty( $context['is_home'] );
 
 		$vars = array(
+			// Independientes del contexto -- disponibles en cualquier bloque
+			// (p. ej. el nodo Organization de la pestaña "General", que se
+			// resuelve con el contexto de la página actual pero nunca debe
+			// variar de una página a otra).
 			'schema_organization_id' => home_url( '/#organization' ),
 			'schema_website_id'      => home_url( '/#website' ),
 			'schema_lang'            => get_bloginfo( 'language' ),
+			'schema_sitename'        => get_bloginfo( 'name' ),
+			'schema_site_url'        => home_url( '/' ),
 			'schema_headline'        => '',
 			'schema_description'     => '',
 			'schema_url'             => '',
@@ -105,13 +122,54 @@ class Cmdroom_Schema_Variables {
 			$vars['schema_author_url']  = get_author_posts_url( $author->ID );
 		}
 
+		// %schema_breadcrumb_items%: array JSON en crudo (ver docblock de
+		// replace()), calculado ANTES del escapado de abajo -- no es un
+		// string, no debe pasar por json_escape().
+		$vars['schema_breadcrumb_items'] = self::get_breadcrumb_items_json( $context );
+
 		// Pre-escapa todos los valores para poder insertarlos dentro de
 		// comillas JSON sin romper el documento.
 		foreach ( $vars as $key => $value ) {
+			if ( 'schema_breadcrumb_items' === $key ) {
+				continue;
+			}
 			$vars[ $key ] = self::json_escape( $value );
 		}
 
 		return $vars;
+	}
+
+	/**
+	 * Array `itemListElement` de un BreadcrumbList, ya serializado a JSON,
+	 * para el bloque de la librería "BreadcrumbList" -- misma forma que
+	 * construye Cmdroom_Schema_Builder::breadcrumb_node(), para no tener dos
+	 * versiones del mismo cálculo. El archivo de autor no tiene
+	 * Cmdroom_Breadcrumbs::get_items_for_author() todavía (limitación
+	 * conocida, ver class-schema-builder.php) -- se resuelve como array
+	 * vacío, no rompe nada.
+	 */
+	private static function get_breadcrumb_items_json( $context ) {
+		if ( isset( $context['post'] ) && $context['post'] instanceof WP_Post ) {
+			$items = Cmdroom_Breadcrumbs::get_items_for_post( $context['post'] );
+		} elseif ( isset( $context['term'] ) && $context['term'] instanceof WP_Term ) {
+			$items = Cmdroom_Breadcrumbs::get_items_for_term( $context['term'] );
+		} elseif ( ! empty( $context['is_home'] ) ) {
+			$items = Cmdroom_Breadcrumbs::get_items_for_home();
+		} else {
+			$items = array();
+		}
+
+		$list_items = array();
+		foreach ( $items as $i => $item ) {
+			$list_items[] = array(
+				'@type'    => 'ListItem',
+				'position' => $i + 1,
+				'name'     => $item['name'],
+				'item'     => $item['url'],
+			);
+		}
+
+		return wp_json_encode( $list_items, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 	}
 
 	/**
@@ -145,6 +203,9 @@ class Cmdroom_Schema_Variables {
 	 */
 	public static function catalog() {
 		return array(
+			array( 'tag' => '%schema_sitename%', 'label' => __( 'Nombre del sitio', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Independiente del contexto -- para el "name" del nodo Organization/WebSite, que no debe variar de una página a otra.', 'command-room' ) ),
+			array( 'tag' => '%schema_site_url%', 'label' => __( 'URL del sitio', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Independiente del contexto -- home_url("/"), para el "url" de Organization/WebSite.', 'command-room' ) ),
+			array( 'tag' => '%schema_breadcrumb_items%', 'label' => __( 'Items del breadcrumb (array)', 'command-room' ), 'contexts' => array( 'post', 'term', 'home' ), 'description' => __( 'Solo para el bloque BreadcrumbList de la Librería -- se inserta SIN comillas: "itemListElement": %schema_breadcrumb_items%. Vacío en la página de autor (sin soporte todavía).', 'command-room' ) ),
 			array( 'tag' => '%schema_headline%', 'label' => __( 'Titular', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Título real del post/término/sitio/autor (sin formato SEO) -- para headline/name.', 'command-room' ) ),
 			array( 'tag' => '%schema_description%', 'label' => __( 'Descripción', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'El mismo extracto en bruto que usa Metas para Open Graph.', 'command-room' ) ),
 			array( 'tag' => '%schema_url%', 'label' => __( 'URL', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Permalink/URL canónica del contexto actual.', 'command-room' ) ),
