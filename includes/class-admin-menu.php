@@ -192,6 +192,7 @@ class Cmdroom_Admin_Menu {
 			'breadcrumbs'  => __( 'Configuración → Breadcrumbs', 'command-room' ),
 			'image-seo'    => __( 'Configuración → Auto-Image SEO', 'command-room' ),
 			'tools'        => __( 'Configuración → Herramientas', 'command-room' ),
+			'components'   => __( 'Componentes', 'command-room' ),
 		);
 	}
 
@@ -215,6 +216,7 @@ class Cmdroom_Admin_Menu {
 			'code'        => __( 'Inyección de fragmentos de código (head/body/footer) sin tocar el tema.', 'command-room' ),
 			'image-seo'   => __( 'Generación automática de atributos alt/title de imágenes.', 'command-room' ),
 			'tools'       => __( 'Herramientas de importación desde Rank Math y vista previa de metas/schema.', 'command-room' ),
+			'components'  => __( 'Bloques de front-end orientados a SEO (ticker, carruseles, FAQ, TLDR...) — activables uno a uno.', 'command-room' ),
 		);
 	}
 
@@ -417,6 +419,10 @@ class Cmdroom_Admin_Menu {
 
 	public static function render_config() {
 		Cmdroom_Config_Admin::render_page();
+	}
+
+	public static function render_components() {
+		Cmdroom_Components_Admin::render_page();
 	}
 
 }

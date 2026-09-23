@@ -1,0 +1,53 @@
+/* Command Room — Ticker (front-end). Solo se encola cuando el componente
+   está activo y hay mensajes configurados (ver Cmdroom_Ticker::maybe_hook_output). */
+
+.cmdroom-ticker {
+	overflow: hidden;
+	background: var( --cmdroom-ticker-bg, #111827 );
+	color: var( --cmdroom-ticker-color, #ffffff );
+	white-space: nowrap;
+	font-size: 13.5px;
+	font-weight: 600;
+	line-height: 1;
+}
+
+.cmdroom-ticker-track {
+	display: inline-flex;
+	animation: cmdroom-ticker-scroll var( --cmdroom-ticker-duration, 26s ) linear infinite;
+	will-change: transform;
+}
+
+.cmdroom-ticker--pauseable:hover .cmdroom-ticker-track {
+	animation-play-state: paused;
+}
+
+.cmdroom-ticker-content {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+.cmdroom-ticker-item {
+	display: inline-block;
+	padding: 9px 28px;
+}
+
+.cmdroom-ticker-item a {
+	color: inherit;
+	text-decoration: underline;
+}
+
+@keyframes cmdroom-ticker-scroll {
+	from {
+		transform: translateX( 0 );
+	}
+	to {
+		transform: translateX( -50% );
+	}
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.cmdroom-ticker-track {
+		animation: none;
+	}
+}
