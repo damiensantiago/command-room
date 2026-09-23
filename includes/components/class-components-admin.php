@@ -76,6 +76,12 @@ class Cmdroom_Components_Admin {
 		wp_enqueue_style( 'cmdroom-meta-editor', CMDROOM_URL . 'assets/css/meta-editor.css', array(), CMDROOM_VERSION );
 		wp_enqueue_style( 'cmdroom-servidor-editor', CMDROOM_URL . 'assets/css/servidor-editor.css', array( 'cmdroom-meta-editor' ), CMDROOM_VERSION );
 		wp_enqueue_style( 'cmdroom-components-editor', CMDROOM_URL . 'assets/css/components-editor.css', array( 'cmdroom-servidor-editor' ), CMDROOM_VERSION );
+		// El CSS del propio Ticker (marquesina: overflow, nowrap, animación)
+		// no se cargaba en el admin -- solo la carga Cmdroom_Ticker::enqueue_assets()
+		// en el front-end real. Sin él, la caja de "Vista previa" pinta el
+		// texto suelto, sin recortar ni desplazar. Se reutiliza el mismo
+		// archivo que el sitio (misma clase .cmdroom-ticker en los dos sitios).
+		wp_enqueue_style( 'cmdroom-ticker-frontend', CMDROOM_URL . 'assets/css/ticker-frontend.css', array( 'cmdroom-components-editor' ), CMDROOM_VERSION );
 		// servidor-editor.js aporta los comportamientos genéricos (toggles,
 		// segmentados) -- ver el marcador cmdroom-servidor-wrap en render_page().
 		wp_enqueue_script( 'cmdroom-servidor-editor', CMDROOM_URL . 'assets/js/servidor-editor.js', array(), CMDROOM_VERSION, true );
