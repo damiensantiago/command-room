@@ -38,6 +38,15 @@ class Cmdroom_Admin_Menu {
 	 */
 	const MERGED_CONFIG_SLUGS = array( 'archives', 'breadcrumbs', 'image-seo', 'tools' );
 
+	/**
+	 * Slugs de get_submenus() cuyo page_slug real no es el derivado
+	 * self::SLUG . '-' . $slug -- de momento solo "components", que el
+	 * handoff pide publicar en command-room-componentes.
+	 */
+	const SLUG_OVERRIDES = array(
+		'components' => 'command-room-componentes',
+	);
+
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ) );
 		add_action( 'admin_post_cmdroom_save_menu_visibility', array( __CLASS__, 'handle_save_menu_visibility' ) );
@@ -87,6 +96,11 @@ class Cmdroom_Admin_Menu {
 			}
 
 			$page_slug = 'general' === $slug ? self::SLUG : self::SLUG . '-' . $slug;
+			// "components" vive en un slug fijo pedido por su propio
+			// handoff (command-room-componentes) en vez del derivado.
+			if ( isset( self::SLUG_OVERRIDES[ $slug ] ) ) {
+				$page_slug = self::SLUG_OVERRIDES[ $slug ];
+			}
 			// Los slugs con guion (image-seo) no pueden ser sufijo de un
 			// nombre de método PHP: se traducen a guion bajo solo para
 			// resolver el callback, la URL de admin sigue con guion.
@@ -147,6 +161,22 @@ class Cmdroom_Admin_Menu {
 				$old_slug,
 				function () use ( $old_slug ) {
 					Cmdroom_Config_Admin::render_legacy_redirect( $old_slug );
+				}
+			);
+		}
+
+		// El slug derivado cmdroom-components (con el que esta pantalla
+		// se publicó minutos antes en esta misma sesión) redirige al
+		// slug fijo command-room-componentes del handoff.
+		foreach ( Cmdroom_Components_Admin::LEGACY_REDIRECTS as $old_slug => $tab ) {
+			add_submenu_page(
+				null,
+				$old_slug,
+				$old_slug,
+				self::CAPABILITY,
+				$old_slug,
+				function () use ( $old_slug ) {
+					Cmdroom_Components_Admin::render_legacy_redirect( $old_slug );
 				}
 			);
 		}
@@ -299,7 +329,7 @@ class Cmdroom_Admin_Menu {
 								$tab_map = array( 'archives' => 'archivos', 'breadcrumbs' => 'breadcrumbs', 'image-seo' => 'autoimage', 'tools' => 'tools' );
 								$url     = Cmdroom_Config_Admin::tab_url( $tab_map[ $slug ] );
 							} else {
-								$page_slug = self::SLUG . '-' . $slug;
+								$page_slug = isset( self::SLUG_OVERRIDES[ $slug ] ) ? self::SLUG_OVERRIDES[ $slug ] : self::SLUG . '-' . $slug;
 								$url       = admin_url( 'admin.php?page=' . $page_slug );
 							}
 							$description = isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : '';

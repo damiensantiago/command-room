@@ -4,27 +4,28 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Pantalla "Componentes" — nuevo apartado (2026-09-23) para activar y
- * configurar los bloques de front-end orientados a SEO que Command Room va
- * incorporando (ticker, carruseles, FAQ, TLDR...). Mismo patrón de cascarón
- * que Cmdroom_Server_Admin/Cmdroom_Config_Admin: esta clase solo pinta el
- * H1, la intro y las pestañas; cada componente construido es dueño de su
- * propia lógica de guardado y salida en el sitio.
+ * Pantalla "Componentes" — rediseño 2026-09-23 sobre el handoff
+ * "Componentes + Ticker". Dos vistas: una pestaña por componente activo
+ * (con Ticker como único funcional, el resto placeholder "Próximamente"),
+ * y "Ver todos" con el interruptor de activación de los 13.
  *
- * A diferencia de Servidor/Configuración, ninguna de estas pestañas fusiona
- * una pantalla anterior — son módulos nuevos, así que no hay LEGACY_REDIRECTS.
- * ROADMAP es la lista completa que pidió Damien; solo "ticker" tiene clase
- * propia por ahora, el resto se pinta como placeholder "Próximamente" hasta
- * que se construyan en próximas sesiones.
+ * Slug fijo `command-room-componentes` (lo pide el handoff, en vez del
+ * derivado `cmdroom-components` que tenían el resto de pantallas nuevas) —
+ * ver Cmdroom_Admin_Menu::SLUG_OVERRIDES. LEGACY_REDIRECTS cubre el slug
+ * `cmdroom-components` con el que se publicó esta pantalla hace un rato en
+ * esta misma sesión, para no romper el enlace que ya se probó en vivo.
  */
 class Cmdroom_Components_Admin {
 
-	const SLUG = 'cmdroom-components';
+	const SLUG = 'command-room-componentes';
+
+	const LEGACY_REDIRECTS = array(
+		'cmdroom-components' => 'ticker',
+	);
 
 	/**
 	 * Opción compartida entre todos los componentes — cada uno guarda sus
-	 * ajustes bajo su propia clave, igual que cmdroom_servidor. Evita crear
-	 * una opción nueva por cada componente que se vaya construyendo.
+	 * ajustes bajo su propia clave, igual que cmdroom_servidor/cmdroom_config.
 	 */
 	const OPTION = 'cmdroom_components';
 
@@ -43,80 +44,29 @@ class Cmdroom_Components_Admin {
 	}
 
 	/**
-	 * key => [ label, desc, status ]. status: 'ready' (tiene clase propia,
-	 * ver render_page()) o 'planned' (placeholder). El orden es el que pidió
-	 * Damien.
+	 * Catálogo de los 13 componentes, en el orden del handoff. status:
+	 * 'ready' (tiene clase propia) o 'planned' (placeholder). Claves de tab
+	 * literales del handoff (?tab=reco, no "content-carousel").
 	 */
-	const ROADMAP = array(
-		'ticker'             => array(
-			'label'  => 'Ticker',
-			'desc'   => 'Barra de mensajes en movimiento (estilo noticias de última hora) fija arriba o abajo del sitio.',
-			'status' => 'ready',
-		),
-		'content-carousel'   => array(
-			'label'  => 'Carrusel de recomendación de contenidos',
-			'desc'   => 'Carrusel de artículos relacionados o destacados, insertable en cualquier punto de la plantilla.',
-			'status' => 'planned',
-		),
-		'html-sitemap'       => array(
-			'label'  => 'Sitemap HTML',
-			'desc'   => 'Página navegable con el listado completo de contenidos del sitio, pensada para el usuario (no para buscadores — eso ya lo cubre el sitemap XML).',
-			'status' => 'planned',
-		),
-		'tags-carousel'      => array(
-			'label'  => 'Carrusel de tags',
-			'desc'   => 'Carrusel horizontal con las etiquetas más relevantes del contenido o del sitio.',
-			'status' => 'planned',
-		),
-		'author-module'      => array(
-			'label'  => 'Módulo completo de autor',
-			'desc'   => 'Imagen, descripción y contenidos relacionados del autor — insertable arriba y abajo del contenido.',
-			'status' => 'planned',
-		),
-		'bibliography'       => array(
-			'label'  => 'Bibliografía',
-			'desc'   => 'Listado de fuentes y referencias citadas en el contenido.',
-			'status' => 'planned',
-		),
-		'shorts-carousel'    => array(
-			'label'  => 'Carrusel de shorts',
-			'desc'   => 'Carrusel de vídeos cortos (shorts/reels) asociados al contenido.',
-			'status' => 'planned',
-		),
-		'reviews-carousel'   => array(
-			'label'  => 'Carrusel de reviews en Google',
-			'desc'   => 'Carrusel con las reseñas más recientes o mejor valoradas del perfil de Google Business.',
-			'status' => 'planned',
-		),
-		'authors-carousel'   => array(
-			'label'  => 'Carrusel de autores',
-			'desc'   => 'Carrusel con el equipo editorial o los autores del sitio.',
-			'status' => 'planned',
-		),
-		'faq'                => array(
-			'label'  => 'Preguntas frecuentes',
-			'desc'   => 'Bloque de preguntas frecuentes con marcado FAQPage para rich snippets.',
-			'status' => 'planned',
-		),
-		'tldr'               => array(
-			'label'  => 'TLDR (En resumen)',
-			'desc'   => 'Resumen breve al inicio del contenido, pensado para lectura rápida y para citabilidad en IA (GEO).',
-			'status' => 'planned',
-		),
-		'help-module'        => array(
-			'label'  => '"Necesitas ayuda" (Italae)',
-			'desc'   => 'Módulo de contacto/ayuda usado en Italae, pensado específicamente para blogs de Ecommerce: acerca al lector a soporte o a la ficha de producto sin salir del artículo.',
-			'status' => 'planned',
-		),
-		'pricing'            => array(
-			'label'  => 'Precios',
-			'desc'   => 'Tabla o bloque de precios/planes, insertable en páginas de producto o servicio.',
-			'status' => 'planned',
-		),
+	const CATALOG = array(
+		'ticker'   => array( 'label' => 'Ticker', 'desc' => 'Barra de mensajes en movimiento debajo del menú: automáticos, configurados o mixtos.', 'status' => 'ready', 'default_enabled' => true ),
+		'reco'     => array( 'label' => 'Carrusel de recomendación de contenidos', 'desc' => 'Carrusel de entradas relacionadas al final del artículo, para enlazado interno y tiempo en página.', 'status' => 'planned', 'default_enabled' => true ),
+		'htmlmap'  => array( 'label' => 'Sitemap HTML', 'desc' => 'Página navegable con toda la estructura del sitio, pensada para usuarios y para rastreo.', 'status' => 'planned', 'default_enabled' => true ),
+		'tags'     => array( 'label' => 'Carrusel de tags', 'desc' => 'Etiquetas del artículo en formato carrusel, enlazadas a sus archivos.', 'status' => 'planned', 'default_enabled' => true ),
+		'author'   => array( 'label' => 'Módulo completo de autor', 'desc' => 'Imagen, descripción y contenidos relacionados del autor. Se puede colocar arriba y abajo del artículo. Refuerza E-E-A-T.', 'status' => 'planned', 'default_enabled' => true ),
+		'biblio'   => array( 'label' => 'Bibliografía', 'desc' => 'Lista de fuentes y referencias citadas al final del artículo.', 'status' => 'planned', 'default_enabled' => true ),
+		'shorts'   => array( 'label' => 'Carrusel de shorts', 'desc' => 'Carrusel de vídeos cortos verticales incrustados en el contenido.', 'status' => 'planned', 'default_enabled' => false ),
+		'reviews'  => array( 'label' => 'Carrusel de reviews en Google', 'desc' => 'Reseñas de tu ficha de Google Business en formato carrusel.', 'status' => 'planned', 'default_enabled' => false ),
+		'authors'  => array( 'label' => 'Carrusel de autores', 'desc' => 'Equipo editorial del sitio, cada autor enlazado a su página.', 'status' => 'planned', 'default_enabled' => false ),
+		'faq'      => array( 'label' => 'Preguntas frecuentes', 'desc' => 'Bloque de preguntas y respuestas con su FAQPage en el schema.', 'status' => 'planned', 'default_enabled' => false ),
+		'tldr'     => array( 'label' => 'TLDR (En resumen)', 'desc' => 'Resumen breve al inicio del artículo con los puntos clave.', 'status' => 'planned', 'default_enabled' => false ),
+		'help'     => array( 'label' => 'Necesitas ayuda', 'desc' => 'Módulo pensado para blogs de ecommerce: al final o en mitad del artículo, lleva al lector a la ayuda de la tienda (contacto, WhatsApp, asesoramiento) y convierte tráfico informativo en venta.', 'status' => 'planned', 'default_enabled' => false ),
+		'pricing'  => array( 'label' => 'Precios', 'desc' => 'Tabla de precios o planes incrustable en páginas y entradas.', 'status' => 'planned', 'default_enabled' => false ),
 	);
 
 	public static function init() {
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
+		add_action( 'wp_ajax_cmdroom_toggle_component', array( __CLASS__, 'handle_toggle_component' ) );
 	}
 
 	public static function enqueue_assets( $hook ) {
@@ -126,16 +76,86 @@ class Cmdroom_Components_Admin {
 		wp_enqueue_style( 'cmdroom-meta-editor', CMDROOM_URL . 'assets/css/meta-editor.css', array(), CMDROOM_VERSION );
 		wp_enqueue_style( 'cmdroom-servidor-editor', CMDROOM_URL . 'assets/css/servidor-editor.css', array( 'cmdroom-meta-editor' ), CMDROOM_VERSION );
 		wp_enqueue_style( 'cmdroom-components-editor', CMDROOM_URL . 'assets/css/components-editor.css', array( 'cmdroom-servidor-editor' ), CMDROOM_VERSION );
-		// Reutiliza los comportamientos genéricos ya construidos para
-		// "Servidor" (toggles, segmentados) -- ver el marcador de clase
-		// cmdroom-servidor-wrap en render_page().
+		// servidor-editor.js aporta los comportamientos genéricos (toggles,
+		// segmentados) -- ver el marcador cmdroom-servidor-wrap en render_page().
 		wp_enqueue_script( 'cmdroom-servidor-editor', CMDROOM_URL . 'assets/js/servidor-editor.js', array(), CMDROOM_VERSION, true );
+		wp_enqueue_script( 'cmdroom-components-editor', CMDROOM_URL . 'assets/js/components-editor.js', array( 'cmdroom-servidor-editor' ), CMDROOM_VERSION, true );
+		wp_localize_script( 'cmdroom-components-editor', 'cmdroomComponents', array(
+			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+			'nonce'   => wp_create_nonce( 'cmdroom_toggle_component' ),
+		) );
+	}
+
+	public static function get_enabled_keys() {
+		$saved = self::get_option_value( 'enabled', null );
+		if ( null === $saved || ! is_array( $saved ) ) {
+			$defaults = array();
+			foreach ( self::CATALOG as $key => $meta ) {
+				if ( ! empty( $meta['default_enabled'] ) ) {
+					$defaults[] = $key;
+				}
+			}
+			return $defaults;
+		}
+		return array_values( array_intersect( $saved, array_keys( self::CATALOG ) ) );
+	}
+
+	public static function is_component_enabled( $key ) {
+		return in_array( $key, self::get_enabled_keys(), true );
+	}
+
+	public static function handle_toggle_component() {
+		if ( ! current_user_can( 'manage_options' ) || ! check_ajax_referer( 'cmdroom_toggle_component', '_wpnonce', false ) ) {
+			wp_send_json_error( null, 403 );
+		}
+		$key = isset( $_POST['key'] ) ? sanitize_key( wp_unslash( $_POST['key'] ) ) : '';
+		if ( ! array_key_exists( $key, self::CATALOG ) ) {
+			wp_send_json_error( null, 400 );
+		}
+		$enabled = self::get_enabled_keys();
+		$on      = ! empty( $_POST['value'] );
+		if ( $on && ! in_array( $key, $enabled, true ) ) {
+			$enabled[] = $key;
+		} elseif ( ! $on ) {
+			$enabled = array_values( array_diff( $enabled, array( $key ) ) );
+		}
+		self::update_option_key( 'enabled', $enabled );
+		wp_send_json_success( array( 'count' => count( $enabled ) ) );
+	}
+
+	public static function render_legacy_redirect( $old_slug ) {
+		$tab = isset( self::LEGACY_REDIRECTS[ $old_slug ] ) ? self::LEGACY_REDIRECTS[ $old_slug ] : 'ticker';
+		wp_safe_redirect( admin_url( 'admin.php?page=' . self::SLUG . '&tab=' . $tab ), 301 );
+		exit;
+	}
+
+	/**
+	 * tab por defecto: 'ticker' si está activo, si no el primer activo del
+	 * catálogo, si no 'all' (los 13 desactivados es un caso límite real:
+	 * justo después de desactivarlos todos desde "Ver todos").
+	 */
+	private static function default_tab() {
+		$enabled = self::get_enabled_keys();
+		if ( in_array( 'ticker', $enabled, true ) ) {
+			return 'ticker';
+		}
+		foreach ( self::CATALOG as $key => $meta ) {
+			if ( in_array( $key, $enabled, true ) ) {
+				return $key;
+			}
+		}
+		return 'all';
 	}
 
 	public static function get_active_tab() {
-		$keys      = array_keys( self::ROADMAP );
-		$requested = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : $keys[0];
-		return in_array( $requested, $keys, true ) ? $requested : $keys[0];
+		$requested = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : '';
+		if ( 'all' === $requested ) {
+			return 'all';
+		}
+		if ( $requested && array_key_exists( $requested, self::CATALOG ) && self::is_component_enabled( $requested ) ) {
+			return $requested;
+		}
+		return self::default_tab();
 	}
 
 	public static function tab_url( $tab ) {
@@ -144,26 +164,39 @@ class Cmdroom_Components_Admin {
 
 	public static function render_page() {
 		$active_tab = self::get_active_tab();
+		$enabled    = self::get_enabled_keys();
 		?>
 		<div class="wrap cmdroom-wrap cmdroom-metadata-wrap cmdroom-servidor-wrap cmdroom-components-wrap">
 			<h1 class="cmdroom-md-h1"><?php esc_html_e( 'Componentes', 'command-room' ); ?></h1>
 
 			<div class="cmdroom-md-container">
-				<p class="cmdroom-md-intro"><?php esc_html_e( 'Bloques de front-end orientados a SEO: activa y configura cada componente por separado. Los marcados "Próximamente" todavía no están construidos.', 'command-room' ); ?></p>
+				<p class="cmdroom-md-intro"><?php esc_html_e( 'Componentes orientados a SEO y conversión: activa y configura cada componente por separado.', 'command-room' ); ?></p>
 
-				<nav class="cr-tabs cmdroom-components-tabs">
-					<?php foreach ( self::ROADMAP as $tab => $meta ) : ?>
-						<a class="cr-tab<?php echo $active_tab === $tab ? ' is-active' : ''; ?>" href="<?php echo esc_url( self::tab_url( $tab ) ); ?>">
-							<?php echo esc_html( $meta['label'] ); ?>
-							<?php if ( 'planned' === $meta['status'] ) : ?>
-								<span class="cr-pill cr-pill-301 cmdroom-components-tab-pill"><?php esc_html_e( 'Próx.', 'command-room' ); ?></span>
-							<?php endif; ?>
-						</a>
-					<?php endforeach; ?>
-				</nav>
+				<div class="cmdroom-components-tabbar">
+					<nav class="cmdroom-components-tabbar-scroll" data-cr-components-tabbar>
+						<?php foreach ( self::CATALOG as $key => $meta ) : ?>
+							<a
+								class="cr-tab<?php echo $active_tab === $key ? ' is-active' : ''; ?>"
+								href="<?php echo esc_url( self::tab_url( $key ) ); ?>"
+								data-cr-component-tab="<?php echo esc_attr( $key ); ?>"
+								<?php echo in_array( $key, $enabled, true ) ? '' : 'hidden'; ?>
+							>
+								<?php echo esc_html( $meta['label'] ); ?>
+								<?php if ( 'planned' === $meta['status'] ) : ?>
+									<span class="cr-pill cr-pill-301 cmdroom-components-tab-pill"><?php esc_html_e( 'Próx.', 'command-room' ); ?></span>
+								<?php endif; ?>
+							</a>
+						<?php endforeach; ?>
+					</nav>
+					<a class="cr-tab cmdroom-components-tab-all<?php echo 'all' === $active_tab ? ' is-active' : ''; ?>" href="<?php echo esc_url( self::tab_url( 'all' ) ); ?>">
+						<?php printf( esc_html__( 'Ver todos (%d) →', 'command-room' ), count( self::CATALOG ) ); ?>
+					</a>
+				</div>
 
 				<?php
-				if ( 'ticker' === $active_tab ) {
+				if ( 'all' === $active_tab ) {
+					self::render_all_view( $enabled );
+				} elseif ( 'ticker' === $active_tab ) {
 					Cmdroom_Ticker_Settings::render_tab();
 				} else {
 					self::render_placeholder( $active_tab );
@@ -174,17 +207,50 @@ class Cmdroom_Components_Admin {
 		<?php
 	}
 
+	private static function render_all_view( $enabled ) {
+		?>
+		<p class="cmdroom-md-intro" style="margin-bottom:16px;"><?php esc_html_e( 'Activa los componentes que necesitas. Los activos aparecen como pestaña en la barra de arriba; los desactivados no se imprimen en el sitio.', 'command-room' ); ?></p>
+
+		<div class="cr-card cmdroom-components-all-list">
+			<?php foreach ( self::CATALOG as $key => $meta ) :
+				$on = in_array( $key, $enabled, true );
+				?>
+				<div class="cmdroom-components-all-row">
+					<div
+						class="cmdroom-components-all-toggle"
+						data-cr-component-toggle
+						data-key="<?php echo esc_attr( $key ); ?>"
+					>
+						<button type="button" class="cr-toggle<?php echo $on ? ' is-on' : ''; ?>"><span class="cr-toggle-knob"></span><input type="checkbox" <?php checked( $on ); ?> /></button>
+					</div>
+					<div class="cmdroom-components-all-body">
+						<p class="cmdroom-components-all-name">
+							<?php echo esc_html( $meta['label'] ); ?>
+							<span class="cr-pill <?php echo 'ready' === $meta['status'] ? 'cr-pill-other' : 'cr-pill-301'; ?>"><?php echo 'ready' === $meta['status'] ? esc_html__( 'Disponible', 'command-room' ) : esc_html__( 'Próximamente', 'command-room' ); ?></span>
+						</p>
+						<p class="cmdroom-components-all-desc"><?php echo esc_html( $meta['desc'] ); ?></p>
+					</div>
+					<a class="cr-btn-secondary cr-btn-compact cmdroom-components-all-configure" href="<?php echo esc_url( self::tab_url( $key ) ); ?>" <?php echo $on ? '' : 'hidden'; ?>><?php esc_html_e( 'Configurar', 'command-room' ); ?></a>
+				</div>
+			<?php endforeach; ?>
+		</div>
+
+		<p class="cmdroom-components-all-summary" data-cr-components-summary>
+			<?php printf( esc_html__( '%1$d de %2$d componentes activos.', 'command-room' ), count( $enabled ), count( self::CATALOG ) ); ?>
+		</p>
+		<?php
+	}
+
 	private static function render_placeholder( $tab ) {
-		$meta = isset( self::ROADMAP[ $tab ] ) ? self::ROADMAP[ $tab ] : null;
+		$meta = isset( self::CATALOG[ $tab ] ) ? self::CATALOG[ $tab ] : null;
 		if ( ! $meta ) {
 			return;
 		}
 		?>
 		<div class="cr-card cmdroom-components-placeholder">
-			<span class="cr-pill cr-pill-301"><?php esc_html_e( 'Próximamente', 'command-room' ); ?></span>
+			<span class="cmdroom-components-placeholder-kicker"><?php esc_html_e( 'PRÓXIMAMENTE', 'command-room' ); ?></span>
 			<h2 class="cmdroom-components-placeholder-title"><?php echo esc_html( $meta['label'] ); ?></h2>
 			<p class="cmdroom-components-placeholder-desc"><?php echo esc_html( $meta['desc'] ); ?></p>
-			<p class="cmdroom-components-placeholder-note"><?php esc_html_e( 'Este componente está en el roadmap pero aún no tiene funcionalidad — se construye en una próxima sesión.', 'command-room' ); ?></p>
 		</div>
 		<?php
 	}

@@ -90,6 +90,31 @@ class Cmdroom_Variables_Glossary {
 					</tbody>
 				</table>
 			<?php endif; ?>
+
+			<?php if ( class_exists( 'Cmdroom_Ticker_Resolver' ) ) : ?>
+				<h2><?php esc_html_e( 'Variables del Ticker (modo Automático)', 'command-room' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Solo tienen sentido dentro de las plantillas de cada fuente automática del componente Ticker (Componentes → Ticker → Automático) -- no funcionan en las plantillas de Metas.', 'command-room' ); ?></p>
+
+				<table class="widefat striped" style="max-width:900px;">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Variable', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Descripción', 'command-room' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( Cmdroom_Ticker_Resolver::variables_catalog() as $v ) : ?>
+							<tr>
+								<td>
+									<code><?php echo esc_html( $v['tag'] ); ?></code>
+									<button type="button" class="button button-small cmdroom-copy-var" data-tag="<?php echo esc_attr( $v['tag'] ); ?>"><?php esc_html_e( 'Copiar', 'command-room' ); ?></button>
+								</td>
+								<td><?php echo esc_html( $v['desc'] ); ?></td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
 		</div>
 		<script>
 		document.querySelectorAll('.cmdroom-copy-var').forEach(function (btn) {
