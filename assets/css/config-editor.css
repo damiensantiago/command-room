@@ -201,6 +201,114 @@
 	font-size: 13px;
 }
 
+/* — IA (llms.txt + markdown de páginas) y Tags — */
+
+.cmdroom-ia-block {
+	padding: 20px 22px;
+	margin-bottom: 20px;
+}
+
+.cmdroom-ia-block-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+	margin-bottom: 14px;
+}
+
+.cmdroom-ia-block-title {
+	font-family: var(--font-heading, inherit);
+	font-weight: 700;
+	font-size: 16px;
+	margin: 0 0 4px;
+}
+
+.cmdroom-ia-field {
+	margin-bottom: 16px;
+}
+
+.cmdroom-ia-field:last-child {
+	margin-bottom: 0;
+}
+
+.cmdroom-ia-textarea {
+	width: 100%;
+	font-family: ui-monospace, Menlo, monospace;
+	font-size: 12.5px;
+	line-height: 1.6;
+	resize: vertical;
+}
+
+.cmdroom-ia-check {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.cmdroom-tags-limit-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 8px;
+}
+
+.cmdroom-tags-status {
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--cmdroom-accent-dark);
+	margin: 0 0 12px;
+}
+
+.cmdroom-tags-status.is-error {
+	color: #c0392b;
+}
+
+.cmdroom-tags-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.cmdroom-tags-table th,
+.cmdroom-tags-table td {
+	text-align: left;
+	padding: 10px 8px;
+	border-bottom: 1px solid var(--cmdroom-divider);
+	vertical-align: middle;
+}
+
+.cmdroom-tags-table thead th {
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+	color: var(--cmdroom-text-muted);
+	font-weight: 600;
+}
+
+.cmdroom-tags-row.is-empty td:first-child {
+	color: var(--cmdroom-accent-dark);
+}
+
+.cmdroom-tags-merge-select {
+	max-width: 180px;
+}
+
+.cmdroom-tags-delete-btn {
+	background: none;
+	border: none;
+	color: #c0392b;
+	font-size: 12.5px;
+	font-weight: 600;
+	cursor: pointer;
+	padding: 4px 6px;
+}
+
+.cmdroom-tags-delete-btn:hover {
+	text-decoration: underline;
+}
+
 @media (max-width: 600px) {
 	.cmdroom-config-rule-row {
 		flex-wrap: wrap;

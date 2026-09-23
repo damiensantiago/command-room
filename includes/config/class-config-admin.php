@@ -18,6 +18,8 @@ class Cmdroom_Config_Admin {
 		'archivos'    => 'archivos',
 		'breadcrumbs' => 'breadcrumbs',
 		'autoimage'   => 'autoimage',
+		'ia'          => 'ia',
+		'tags'        => 'tags',
 		'tools'       => 'tools',
 	);
 
@@ -45,6 +47,7 @@ class Cmdroom_Config_Admin {
 		wp_enqueue_style( 'cmdroom-config-editor', CMDROOM_URL . 'assets/css/config-editor.css', array( 'cmdroom-servidor-editor' ), CMDROOM_VERSION );
 		wp_enqueue_script( 'cmdroom-servidor-editor', CMDROOM_URL . 'assets/js/servidor-editor.js', array(), CMDROOM_VERSION, true );
 		wp_enqueue_script( 'cmdroom-config-editor', CMDROOM_URL . 'assets/js/config-editor.js', array(), CMDROOM_VERSION, true );
+		wp_enqueue_script( 'cmdroom-tags-editor', CMDROOM_URL . 'assets/js/tags-editor.js', array(), CMDROOM_VERSION, true );
 		wp_localize_script( 'cmdroom-config-editor', 'cmdroomConfig', array(
 			'restUrl' => esc_url_raw( rest_url( 'command-room/v1/preview' ) ),
 			'nonce'   => wp_create_nonce( 'wp_rest' ),
@@ -72,6 +75,8 @@ class Cmdroom_Config_Admin {
 			'archivos'    => __( 'Archivos y taxonomías', 'command-room' ),
 			'breadcrumbs' => __( 'Breadcrumbs', 'command-room' ),
 			'autoimage'   => __( 'Auto-Image SEO', 'command-room' ),
+			'ia'          => __( 'IA', 'command-room' ),
+			'tags'        => __( 'Tags', 'command-room' ),
 			'tools'       => __( 'Herramientas', 'command-room' ),
 		);
 		?>
@@ -94,6 +99,12 @@ class Cmdroom_Config_Admin {
 						break;
 					case 'autoimage':
 						Cmdroom_Image_Seo_Settings::render_tab();
+						break;
+					case 'ia':
+						Cmdroom_Ia_Settings::render_tab();
+						break;
+					case 'tags':
+						Cmdroom_Tags_Settings::render_tab();
 						break;
 					case 'tools':
 						Cmdroom_Tools_Admin::render_tab();
