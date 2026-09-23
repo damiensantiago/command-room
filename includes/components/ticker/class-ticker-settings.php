@@ -261,6 +261,16 @@ class Cmdroom_Ticker_Settings {
 
 	/* — Render — */
 
+	const PREVIEW_EMPTY_TEXT = 'Sin mensajes para este modo';
+
+	/**
+	 * La vista previa reacciona en vivo a los cambios del formulario (sin
+	 * guardar) -- ver components-editor.js::initTickerPreview(). Este método
+	 * solo pinta el estado inicial (SSR, con lo ya guardado); ambas
+	 * posiciones (below_menu/bottom) se renderizan siempre, una oculta con
+	 * `hidden`, para que JS solo tenga que mostrar/ocultar + reescribir el
+	 * contenido del slot activo en vez de reconstruir el marco entero.
+	 */
 	private static function render_preview( $opts, $view, $day ) {
 		$show_day = 'manual' === $view && ! empty( $opts['manual']['by_day'] );
 		$messages = Cmdroom_Ticker_Resolver::resolve_for_mode( $opts, $view, $day );
@@ -271,26 +281,62 @@ class Cmdroom_Ticker_Settings {
 		}
 		$caption .= sprintf( ' · %d mensaje%s', count( $messages ), 1 === count( $messages ) ? '' : 's' );
 		?>
-		<div class="cmdroom-ticker-preview-head">
-			<span class="cr-label"><?php esc_html_e( 'Vista previa', 'command-room' ); ?></span>
-			<span class="cmdroom-ticker-preview-caption"><?php echo esc_html( $caption ); ?></span>
-		</div>
-		<div class="cmdroom-ticker-preview-frame">
-			<div class="cmdroom-ticker-preview-header">
-				<span class="cmdroom-ticker-preview-sitename"><?php echo esc_html( get_bloginfo( 'name' ) ); ?></span>
-				<span class="cmdroom-ticker-preview-nav"><?php esc_html_e( 'Tienda · Blog · Contacto', 'command-room' ); ?></span>
+		<div
+			class="cmdroom-ticker-preview"
+			data-cr-ticker-preview
+			data-view="<?php echo esc_attr( $view ); ?>"
+			data-day="<?php echo esc_attr( $day ); ?>"
+			data-mode-label="<?php echo esc_attr( self::MODE_LABELS[ $view ] ); ?>"
+			data-day-label="<?php echo esc_attr( $show_day ? $labels[ $day ] : '' ); ?>"
+			data-empty-text="<?php echo esc_attr( self::PREVIEW_EMPTY_TEXT ); ?>"
+		>
+			<div class="cmdroom-ticker-preview-head">
+				<span class="cr-label"><?php esc_html_e( 'Vista previa', 'command-room' ); ?></span>
+				<span class="cmdroom-ticker-preview-caption" data-cr-ticker-caption><?php echo esc_html( $caption ); ?></span>
 			</div>
-			<?php if ( 'below_menu' === $opts['style']['position'] ) : ?>
-				<?php Cmdroom_Ticker::render_bar( $messages, $opts['style'], array( 'empty_text' => __( 'Sin mensajes para este modo', 'command-room' ) ) ); ?>
-			<?php endif; ?>
-			<div class="cmdroom-ticker-preview-body">
-				<span class="cmdroom-ticker-preview-fake-bar cmdroom-ticker-preview-fake-bar--55"></span>
-				<span class="cmdroom-ticker-preview-fake-bar cmdroom-ticker-preview-fake-bar--80"></span>
+			<div class="cmdroom-ticker-preview-frame">
+				<div class="cmdroom-ticker-preview-header">
+					<span class="cmdroom-ticker-preview-sitename"><?php echo esc_html( get_bloginfo( 'name' ) ); ?></span>
+					<span class="cmdroom-ticker-preview-nav"><?php esc_html_e( 'Tienda · Blog · Contacto', 'command-room' ); ?></span>
+				</div>
+				<div data-cr-ticker-bar-slot="below_menu" <?php echo 'below_menu' !== $opts['style']['position'] ? 'hidden' : ''; ?>>
+					<?php Cmdroom_Ticker::render_bar( $messages, $opts['style'], array( 'empty_text' => self::PREVIEW_EMPTY_TEXT ) ); ?>
+				</div>
+				<div class="cmdroom-ticker-preview-body">
+					<span class="cmdroom-ticker-preview-fake-bar cmdroom-ticker-preview-fake-bar--55"></span>
+					<span class="cmdroom-ticker-preview-fake-bar cmdroom-ticker-preview-fake-bar--80"></span>
+				</div>
+				<div data-cr-ticker-bar-slot="bottom" <?php echo 'bottom' !== $opts['style']['position'] ? 'hidden' : ''; ?>>
+					<?php Cmdroom_Ticker::render_bar( $messages, $opts['style'], array( 'empty_text' => self::PREVIEW_EMPTY_TEXT ) ); ?>
+				</div>
 			</div>
-			<?php if ( 'bottom' === $opts['style']['position'] ) : ?>
-				<?php Cmdroom_Ticker::render_bar( $messages, $opts['style'], array( 'empty_text' => __( 'Sin mensajes para este modo', 'command-room' ) ) ); ?>
-			<?php endif; ?>
 		</div>
+
+		<?php self::render_preview_data_script( $opts, $view ); ?>
+		<?php
+	}
+
+	/**
+	 * Datos en bruto para que la vista previa en vivo recalcule en el
+	 * navegador sin volver a pedir nada al servidor:
+	 * - 'auto': pool en bruto (sin plantilla) de las 4 fuentes -- JS aplica
+	 *   plantilla/on-off/vigencia/máximo tal como estén escritos en ese momento.
+	 * - 'mixed': los mensajes YA resueltos de Fijo (Configurado, día actual)
+	 *   y Automático (con los ajustes guardados) -- JS solo reproduce el
+	 *   algoritmo de intercalado con el orden/proporción/límite en vivo.
+	 * 'manual' no necesita nada: JS lee directamente los campos de texto.
+	 */
+	private static function render_preview_data_script( $opts, $view ) {
+		$data = array();
+		if ( 'auto' === $view ) {
+			$data['auto'] = Cmdroom_Ticker_Resolver::raw_auto_sources();
+		} elseif ( 'mixed' === $view ) {
+			$day           = Cmdroom_Ticker_Resolver::current_day_key();
+			$data['fixed'] = Cmdroom_Ticker_Resolver::resolve_manual( $opts['manual'], $day );
+			$data['auto']  = Cmdroom_Ticker_Resolver::resolve_auto( $opts['auto'] );
+		}
+		?>
+		<script type="application/json" id="cmdroom-ticker-preview-data"><?php echo wp_json_encode( $data ); ?></script>
 		<?php
 	}
 

@@ -72,49 +72,93 @@ class Cmdroom_Ticker_Resolver {
 		);
 	}
 
+	/** Techo de artículos por fuente que se ofrecen a la vista previa en vivo del admin -- ver raw_auto_sources(). */
+	const PREVIEW_RAW_CAP = 20;
+
+	/** Ventana de días, generosa, para el fetch en bruto de posts que alimenta la vista previa en vivo (JS re-filtra por la "vigencia" real que esté escrita en el campo en ese momento). */
+	const PREVIEW_POSTS_WINDOW_DAYS = 365;
+
 	/**
 	 * @return array Msg[] de la fuente "Últimas entradas del blog".
 	 */
 	private static function resolve_posts_source( $cfg, $days, $max ) {
+		$cutoff = time() - ( max( 1, (int) $days ) * DAY_IN_SECONDS );
+		$out    = array();
+		foreach ( self::raw_posts_source() as $raw ) {
+			if ( $raw['ts'] < $cutoff ) {
+				continue; // raw_posts_source() trae un pool amplio (365 días); aquí se aplica la vigencia real.
+			}
+			if ( count( $out ) >= max( 1, (int) $max ) ) {
+				break;
+			}
+			$out[] = array(
+				'text' => self::apply_vars( $cfg['tpl'], $raw['vars'] ),
+				'url'  => $raw['url'],
+			);
+		}
+		return $out;
+	}
+
+	/**
+	 * Pool amplio (365 días, hasta 20 items) sin plantilla aplicada -- cada
+	 * item lleva sus variables en bruto + fecha. Lo usan tanto
+	 * resolve_posts_source() (que filtra por la vigencia real) como la vista
+	 * previa en vivo del admin, que re-filtra/re-aplica plantilla en el
+	 * navegador sin volver a consultar el servidor -- ver
+	 * Cmdroom_Ticker_Settings::render_preview_data_script().
+	 */
+	private static function raw_posts_source() {
 		$q = new WP_Query( array(
 			'post_type'      => 'post',
 			'post_status'    => 'publish',
-			'posts_per_page' => max( 1, (int) $max ),
+			'posts_per_page' => self::PREVIEW_RAW_CAP,
 			'orderby'        => 'date',
 			'order'          => 'DESC',
-			'date_query'     => array( array( 'after' => sprintf( '%d days ago', max( 1, (int) $days ) ) ) ),
+			'date_query'     => array( array( 'after' => sprintf( '%d days ago', self::PREVIEW_POSTS_WINDOW_DAYS ) ) ),
 			'no_found_rows'  => true,
 			'ignore_sticky_posts' => true,
 		) );
 		$out = array();
 		foreach ( $q->posts as $post ) {
 			$out[] = array(
-				'text' => self::apply_vars( $cfg['tpl'], array( '%title%' => get_the_title( $post ) ) ),
+				'vars' => array( '%title%' => get_the_title( $post ) ),
 				'url'  => get_permalink( $post ),
+				'ts'   => get_post_time( 'U', true, $post ),
 			);
 		}
 		return $out;
 	}
 
 	private static function resolve_sale_source( $cfg, $max ) {
+		$out = array();
+		foreach ( array_slice( self::raw_sale_source(), 0, max( 1, (int) $max ) ) as $raw ) {
+			$out[] = array(
+				'text' => self::apply_vars( $cfg['tpl'], $raw['vars'] ),
+				'url'  => $raw['url'],
+			);
+		}
+		return $out;
+	}
+
+	private static function raw_sale_source() {
 		if ( ! self::has_woocommerce() || ! function_exists( 'wc_get_product_ids_on_sale' ) ) {
 			return array();
 		}
-		$ids = array_slice( (array) wc_get_product_ids_on_sale(), 0, max( 1, (int) $max ) );
+		$ids = array_slice( (array) wc_get_product_ids_on_sale(), 0, self::PREVIEW_RAW_CAP );
 		$out = array();
 		foreach ( $ids as $id ) {
 			$product = wc_get_product( $id );
 			if ( ! $product ) {
 				continue;
 			}
-			$regular = (float) $product->get_regular_price();
-			$sale    = (float) $product->get_sale_price();
+			$regular  = (float) $product->get_regular_price();
+			$sale     = (float) $product->get_sale_price();
 			$discount = $regular > 0 ? (int) round( ( $regular - $sale ) / $regular * 100 ) : 0;
-			$out[] = array(
-				'text' => self::apply_vars( $cfg['tpl'], array(
+			$out[]    = array(
+				'vars' => array(
 					'%product_name%' => $product->get_name(),
 					'%discount%'     => (string) $discount,
-				) ),
+				),
 				'url'  => get_permalink( $id ),
 			);
 		}
@@ -126,6 +170,17 @@ class Cmdroom_Ticker_Resolver {
 	 * sin enlace salvo que el tema/Damien filtre `cmdroom_ticker_shipping_url`.
 	 */
 	private static function resolve_shipping_source( $cfg ) {
+		$out = array();
+		foreach ( self::raw_shipping_source() as $raw ) {
+			$out[] = array(
+				'text' => self::apply_vars( $cfg['tpl'], $raw['vars'] ),
+				'url'  => $raw['url'],
+			);
+		}
+		return $out;
+	}
+
+	private static function raw_shipping_source() {
 		if ( ! self::has_woocommerce() || ! class_exists( 'WC_Shipping_Zones' ) ) {
 			return array();
 		}
@@ -135,7 +190,7 @@ class Cmdroom_Ticker_Resolver {
 		}
 		$amount = function_exists( 'wc_price' ) ? wp_strip_all_tags( wc_price( $min ) ) : number_format_i18n( $min, 2 );
 		return array( array(
-			'text' => self::apply_vars( $cfg['tpl'], array( '%free_shipping_min%' => $amount ) ),
+			'vars' => array( '%free_shipping_min%' => $amount ),
 			'url'  => apply_filters( 'cmdroom_ticker_shipping_url', '' ),
 		) );
 	}
@@ -163,23 +218,31 @@ class Cmdroom_Ticker_Resolver {
 	}
 
 	private static function resolve_coupons_source( $cfg, $max ) {
+		$out = array();
+		foreach ( array_slice( self::raw_coupons_source(), 0, max( 1, (int) $max ) ) as $raw ) {
+			$out[] = array(
+				'text' => self::apply_vars( $cfg['tpl'], $raw['vars'] ),
+				'url'  => $raw['url'],
+			);
+		}
+		return $out;
+	}
+
+	private static function raw_coupons_source() {
 		if ( ! self::has_woocommerce() ) {
 			return array();
 		}
 		$q = new WP_Query( array(
 			'post_type'      => 'shop_coupon',
 			'post_status'    => 'publish',
-			'posts_per_page' => max( 1, (int) $max ) * 2, // margen para descartar caducados.
+			'posts_per_page' => self::PREVIEW_RAW_CAP,
 			'orderby'        => 'date',
 			'order'          => 'DESC',
 			'no_found_rows'  => true,
 		) );
 		$out = array();
 		foreach ( $q->posts as $post ) {
-			if ( count( $out ) >= (int) $max ) {
-				break;
-			}
-			$coupon = new WC_Coupon( $post->ID );
+			$coupon  = new WC_Coupon( $post->ID );
 			$expires = $coupon->get_date_expires();
 			if ( $expires && $expires->getTimestamp() < time() ) {
 				continue; // caducado -- "dentro de fecha" del handoff.
@@ -188,14 +251,30 @@ class Cmdroom_Ticker_Resolver {
 				? $coupon->get_amount() . '%'
 				: ( function_exists( 'wc_price' ) ? wp_strip_all_tags( wc_price( $coupon->get_amount() ) ) : $coupon->get_amount() );
 			$out[] = array(
-				'text' => self::apply_vars( $cfg['tpl'], array(
+				'vars' => array(
 					'%coupon_code%'   => $coupon->get_code(),
 					'%coupon_amount%' => $amount,
-				) ),
+				),
 				'url'  => '',
 			);
 		}
 		return $out;
+	}
+
+	/**
+	 * Junta el pool en bruto de las 4 fuentes -- lo usa la vista previa en
+	 * vivo del admin (Automático) para recalcular en el navegador sin volver
+	 * a pedir nada al servidor cuando Damien cambia plantilla/on-off/
+	 * vigencia/máximo. 'posts' lleva 'ts' (fecha) para poder re-filtrar por
+	 * vigencia en JS; las demás no tienen ventana de días.
+	 */
+	public static function raw_auto_sources() {
+		return array(
+			'posts'    => self::raw_posts_source(),
+			'sale'     => self::raw_sale_source(),
+			'shipping' => self::raw_shipping_source(),
+			'coupons'  => self::raw_coupons_source(),
+		);
 	}
 
 	/**
