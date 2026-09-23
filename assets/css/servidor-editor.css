@@ -276,6 +276,8 @@
 	background: transparent;
 	border: none;
 	border-left: 1px solid var(--cmdroom-divider);
+	text-decoration: none;
+	display: inline-block;
 }
 
 .cr-seg-opt:first-child {
