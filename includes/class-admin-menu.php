@@ -63,7 +63,13 @@ class Cmdroom_Admin_Menu {
 			return false;
 		}
 		$page = sanitize_key( wp_unslash( $_GET['page'] ) );
-		return self::SLUG === $page || 0 === strpos( $page, self::SLUG . '-' );
+		if ( self::SLUG === $page || 0 === strpos( $page, self::SLUG . '-' ) ) {
+			return true;
+		}
+		// Páginas con slug propio fuera del patrón cmdroom-* (de momento solo
+		// "Componentes", que el handoff pide en command-room-componentes) --
+		// sin esto, sus avisos ajenos (WP core, Imagify, etc.) no se silencian.
+		return in_array( $page, self::SLUG_OVERRIDES, true );
 	}
 
 	public static function silence_foreign_notices() {
