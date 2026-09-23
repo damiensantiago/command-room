@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Command Room
  * Description: Suite de SEO propia (metas, datos estructurados, sitemaps y redirecciones por plantilla) para sustituir Rank Math en los sitios WordPress de Damien.
- * Version: 0.17.0
+ * Version: 0.17.1
  * Author: Damien Santiago
  * Text Domain: command-room
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMDROOM_VERSION', '0.17.0' );
+define( 'CMDROOM_VERSION', '0.17.1' );
 define( 'CMDROOM_FILE', __FILE__ );
 define( 'CMDROOM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMDROOM_URL', plugin_dir_url( __FILE__ ) );

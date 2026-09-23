@@ -4,9 +4,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Pestaña "Tags" de la pantalla "Configuración" — límite recomendado de
- * etiquetas por post (aviso, no bloqueo) y limpieza de etiquetas
- * duplicadas/poco usadas (fusión con redirección 301 + borrado de vacías).
+ * Pestaña "Tags" de la pantalla "Configuración" — tres sub-pestañas
+ * (pedidas por Damien el 2026-09-23, sobre la v0.17.0 que solo tenía
+ * límite + limpieza en una única vista):
+ *  - Listado completo: todas las etiquetas con su nº de entradas, fusión
+ *    de duplicadas (con redirección 301) y borrado de vacías.
+ *  - Etiquetado masivo: añadir/quitar una o varias etiquetas a todos los
+ *    posts que coincidan con un filtro (tipo de contenido, categoría,
+ *    rango de fechas, búsqueda por título), sin tener que abrirlos uno
+ *    a uno.
+ *  - Configuración: el límite recomendado de etiquetas por post.
  *
  * Las plantillas de título/meta de las páginas de archivo de tags NO viven
  * aquí — ya existen en Metas → pestaña "Tags" (Cmdroom_Meta_Settings, grupo
@@ -21,11 +28,19 @@ class Cmdroom_Tags_Settings {
 		'max_per_post' => 0, // 0 = sin límite
 	);
 
+	const VIEWS = array(
+		'listado' => 'listado',
+		'masivo'  => 'masivo',
+		'config'  => 'config',
+	);
+
 	public static function init() {
 		add_action( 'admin_post_cmdroom_save_tags', array( __CLASS__, 'handle_save' ) );
 		add_action( 'wp_ajax_cmdroom_tags_merge', array( __CLASS__, 'handle_merge' ) );
 		add_action( 'wp_ajax_cmdroom_tags_delete_empty', array( __CLASS__, 'handle_delete_empty' ) );
 		add_action( 'wp_ajax_cmdroom_tags_delete_one', array( __CLASS__, 'handle_delete_one' ) );
+		add_action( 'wp_ajax_cmdroom_tags_bulk_preview', array( __CLASS__, 'handle_bulk_preview' ) );
+		add_action( 'wp_ajax_cmdroom_tags_bulk_apply', array( __CLASS__, 'handle_bulk_apply' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'maybe_notice_over_limit' ) );
 	}
 
@@ -36,6 +51,15 @@ class Cmdroom_Tags_Settings {
 	public static function get_max_per_post() {
 		$opts = self::get_options();
 		return (int) $opts['max_per_post'];
+	}
+
+	public static function get_active_view() {
+		$requested = isset( $_GET['view'] ) ? sanitize_key( wp_unslash( $_GET['view'] ) ) : 'listado';
+		return isset( self::VIEWS[ $requested ] ) ? $requested : 'listado';
+	}
+
+	public static function view_url( $view ) {
+		return add_query_arg( array( 'page' => 'cmdroom-config', 'tab' => 'tags', 'view' => $view ), admin_url( 'admin.php' ) );
 	}
 
 	public static function handle_save() {
@@ -85,20 +109,20 @@ class Cmdroom_Tags_Settings {
 		);
 	}
 
-	/* ------------------------------------------------------------------ */
-	/* Limpieza de tags                                                  */
-	/* ------------------------------------------------------------------ */
-
-	public static function get_all_tags_with_counts() {
-		$terms = get_terms( array( 'taxonomy' => 'post_tag', 'hide_empty' => false, 'orderby' => 'count', 'order' => 'ASC' ) );
-		return is_wp_error( $terms ) ? array() : $terms;
-	}
-
 	private static function verify_ajax() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( array( 'message' => __( 'No tienes permiso para hacer esto.', 'command-room' ) ), 403 );
 		}
 		check_ajax_referer( 'cmdroom_tags_actions', 'nonce' );
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Listado completo                                                  */
+	/* ------------------------------------------------------------------ */
+
+	public static function get_all_tags_with_counts() {
+		$terms = get_terms( array( 'taxonomy' => 'post_tag', 'hide_empty' => false, 'orderby' => 'count', 'order' => 'ASC' ) );
+		return is_wp_error( $terms ) ? array() : $terms;
 	}
 
 	/**
@@ -199,43 +223,148 @@ class Cmdroom_Tags_Settings {
 		) );
 	}
 
+	/* ------------------------------------------------------------------ */
+	/* Etiquetado masivo                                                 */
+	/* ------------------------------------------------------------------ */
+
+	private static function sanitize_bulk_filters( $data ) {
+		$public_types = array_keys( get_post_types( array( 'public' => true ), 'names' ) );
+		$post_type    = isset( $data['post_type'] ) && in_array( $data['post_type'], $public_types, true ) ? $data['post_type'] : 'post';
+
+		return array(
+			'post_type' => $post_type,
+			'category'  => isset( $data['category'] ) ? (int) $data['category'] : 0,
+			'date_from' => isset( $data['date_from'] ) ? sanitize_text_field( $data['date_from'] ) : '',
+			'date_to'   => isset( $data['date_to'] ) ? sanitize_text_field( $data['date_to'] ) : '',
+			'search'    => isset( $data['search'] ) ? sanitize_text_field( $data['search'] ) : '',
+		);
+	}
+
+	private static function bulk_query_args( $filters ) {
+		$args = array(
+			'post_type'      => $filters['post_type'],
+			'post_status'    => 'publish',
+			'posts_per_page' => -1,
+			'fields'         => 'ids',
+			'no_found_rows'  => false,
+		);
+
+		if ( $filters['category'] && is_object_in_taxonomy( $filters['post_type'], 'category' ) ) {
+			$args['tax_query'] = array( array( 'taxonomy' => 'category', 'field' => 'term_id', 'terms' => $filters['category'] ) );
+		}
+
+		if ( '' !== $filters['search'] ) {
+			$args['s'] = $filters['search'];
+		}
+
+		if ( '' !== $filters['date_from'] || '' !== $filters['date_to'] ) {
+			$date_query = array( 'inclusive' => true );
+			if ( '' !== $filters['date_from'] ) {
+				$date_query['after'] = $filters['date_from'];
+			}
+			if ( '' !== $filters['date_to'] ) {
+				$date_query['before'] = $filters['date_to'];
+			}
+			$args['date_query'] = array( $date_query );
+		}
+
+		return $args;
+	}
+
+	private static function parse_tag_list( $raw ) {
+		$parts = explode( ',', (string) $raw );
+		$out   = array();
+		foreach ( $parts as $part ) {
+			$name = trim( $part );
+			if ( '' !== $name && ! in_array( $name, $out, true ) ) {
+				$out[] = $name;
+			}
+		}
+		return $out;
+	}
+
+	public static function handle_bulk_preview() {
+		self::verify_ajax();
+
+		$filters = self::sanitize_bulk_filters( wp_unslash( $_POST ) );
+		$query   = new WP_Query( self::bulk_query_args( $filters ) );
+
+		wp_send_json_success( array( 'count' => (int) $query->found_posts ) );
+	}
+
+	public static function handle_bulk_apply() {
+		self::verify_ajax();
+
+		$filters     = self::sanitize_bulk_filters( wp_unslash( $_POST ) );
+		$add_tags    = self::parse_tag_list( isset( $_POST['add_tags'] ) ? sanitize_text_field( wp_unslash( $_POST['add_tags'] ) ) : '' );
+		$remove_tags = self::parse_tag_list( isset( $_POST['remove_tags'] ) ? sanitize_text_field( wp_unslash( $_POST['remove_tags'] ) ) : '' );
+
+		if ( ! $add_tags && ! $remove_tags ) {
+			wp_send_json_error( array( 'message' => __( 'Indica al menos una etiqueta para añadir o quitar.', 'command-room' ) ), 400 );
+		}
+
+		$query    = new WP_Query( self::bulk_query_args( $filters ) );
+		$post_ids = $query->posts;
+
+		foreach ( $post_ids as $post_id ) {
+			if ( $add_tags ) {
+				wp_set_post_terms( $post_id, $add_tags, 'post_tag', true );
+			}
+			if ( $remove_tags ) {
+				wp_remove_object_terms( $post_id, $remove_tags, 'post_tag' );
+			}
+		}
+
+		wp_send_json_success( array(
+			/* translators: %d: nº de posts afectados */
+			'message' => sprintf( __( 'Aplicado a %d posts.', 'command-room' ), count( $post_ids ) ),
+			'count'   => count( $post_ids ),
+		) );
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Render                                                            */
+	/* ------------------------------------------------------------------ */
+
 	public static function render_tab() {
-		$opts = self::get_options();
-		$tags = self::get_all_tags_with_counts();
+		$active_view = self::get_active_view();
+		$labels      = array(
+			'listado' => __( 'Listado completo', 'command-room' ),
+			'masivo'  => __( 'Etiquetado masivo', 'command-room' ),
+			'config'  => __( 'Configuración', 'command-room' ),
+		);
 		?>
 		<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
 			<div class="notice notice-success"><p><?php esc_html_e( 'Guardado.', 'command-room' ); ?></p></div>
 		<?php endif; ?>
 
-		<div class="cr-card cmdroom-ia-block">
-			<h2 class="cmdroom-ia-block-title"><?php esc_html_e( 'Límite de etiquetas por post', 'command-room' ); ?></h2>
-			<p class="cmdroom-config-rule-desc"><?php esc_html_e( 'Aviso en el editor cuando un post supera este número de etiquetas — no se aplica solo, tú decides qué quitar.', 'command-room' ); ?></p>
+		<nav class="cr-tabs cmdroom-tags-subtabs">
+			<?php foreach ( $labels as $view => $label ) : ?>
+				<a class="cr-tab<?php echo $active_view === $view ? ' is-active' : ''; ?>" href="<?php echo esc_url( self::view_url( $view ) ); ?>"><?php echo esc_html( $label ); ?></a>
+			<?php endforeach; ?>
+		</nav>
 
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmdroom-tags-limit-form">
-				<?php wp_nonce_field( 'cmdroom_save_tags' ); ?>
-				<input type="hidden" name="action" value="cmdroom_save_tags" />
-				<label class="cr-label" for="cmdroom-tags-max"><?php esc_html_e( 'Máximo recomendado (0 = sin límite)', 'command-room' ); ?></label>
-				<div class="cmdroom-tags-limit-row">
-					<input type="number" id="cmdroom-tags-max" class="cr-input" name="max_per_post" min="0" max="50" value="<?php echo esc_attr( $opts['max_per_post'] ); ?>" style="max-width:110px;" />
-					<?php submit_button( __( 'Guardar', 'command-room' ), 'cr-btn-primary', 'submit', false ); ?>
-				</div>
-			</form>
+		<?php
+		switch ( $active_view ) {
+			case 'masivo':
+				self::render_masivo_subtab();
+				break;
+			case 'config':
+				self::render_config_subtab();
+				break;
+			default:
+				self::render_listado_subtab();
+				break;
+		}
+	}
 
-			<p class="cmdroom-config-note">
-				<?php
-				printf(
-					/* translators: %s: enlace a Metas → Tags */
-					wp_kses( __( 'Las plantillas de título y meta descripción de las páginas de archivo de tags se configuran en %s.', 'command-room' ), array( 'a' => array( 'href' => array() ) ) ),
-					'<a href="' . esc_url( admin_url( 'admin.php?page=cmdroom-metas&tab=tags' ) ) . '">' . esc_html__( 'Metas → Tags', 'command-room' ) . '</a>'
-				);
-				?>
-			</p>
-		</div>
-
+	private static function render_listado_subtab() {
+		$tags = self::get_all_tags_with_counts();
+		?>
 		<div class="cr-card cmdroom-ia-block" data-cr-tags-cleanup data-nonce="<?php echo esc_attr( wp_create_nonce( 'cmdroom_tags_actions' ) ); ?>">
 			<div class="cmdroom-ia-block-head">
 				<div>
-					<h2 class="cmdroom-ia-block-title"><?php esc_html_e( 'Limpieza de etiquetas', 'command-room' ); ?></h2>
+					<h2 class="cmdroom-ia-block-title"><?php esc_html_e( 'Listado completo', 'command-room' ); ?></h2>
 					<p class="cmdroom-config-rule-desc"><?php esc_html_e( 'Ordenadas de menos a más usadas. Fusiona duplicados o borra las que no tienen ninguna entrada.', 'command-room' ); ?></p>
 				</div>
 				<button type="button" class="cr-btn-secondary" data-cr-tags-delete-empty><?php esc_html_e( 'Eliminar todas las vacías', 'command-room' ); ?></button>
@@ -280,6 +409,96 @@ class Cmdroom_Tags_Settings {
 					</tbody>
 				</table>
 			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	private static function render_masivo_subtab() {
+		$post_types = get_post_types( array( 'public' => true ), 'objects' );
+		unset( $post_types['attachment'] );
+		$categories = get_categories( array( 'hide_empty' => false ) );
+		?>
+		<div class="cr-card cmdroom-ia-block" data-cr-tags-bulk data-nonce="<?php echo esc_attr( wp_create_nonce( 'cmdroom_tags_actions' ) ); ?>">
+			<h2 class="cmdroom-ia-block-title"><?php esc_html_e( 'Etiquetado masivo', 'command-room' ); ?></h2>
+			<p class="cmdroom-config-rule-desc"><?php esc_html_e( 'Filtra los posts y añade o quita una o varias etiquetas a todos los que coincidan de una vez. Las etiquetas que no existan se crean solas.', 'command-room' ); ?></p>
+
+			<div class="cmdroom-config-grid">
+				<div class="cmdroom-ia-field">
+					<label class="cr-label" for="cmdroom-bulk-post-type"><?php esc_html_e( 'Tipo de contenido', 'command-room' ); ?></label>
+					<select id="cmdroom-bulk-post-type" class="cr-input" data-cr-bulk-filter="post_type">
+						<?php foreach ( $post_types as $pt ) : ?>
+							<option value="<?php echo esc_attr( $pt->name ); ?>" <?php selected( 'post', $pt->name ); ?>><?php echo esc_html( $pt->label ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</div>
+				<div class="cmdroom-ia-field">
+					<label class="cr-label" for="cmdroom-bulk-category"><?php esc_html_e( 'Categoría', 'command-room' ); ?></label>
+					<select id="cmdroom-bulk-category" class="cr-input" data-cr-bulk-filter="category">
+						<option value=""><?php esc_html_e( 'Todas', 'command-room' ); ?></option>
+						<?php foreach ( $categories as $cat ) : ?>
+							<option value="<?php echo (int) $cat->term_id; ?>"><?php echo esc_html( $cat->name ); ?> (<?php echo (int) $cat->count; ?>)</option>
+						<?php endforeach; ?>
+					</select>
+				</div>
+				<div class="cmdroom-ia-field">
+					<label class="cr-label" for="cmdroom-bulk-date-from"><?php esc_html_e( 'Publicado desde', 'command-room' ); ?></label>
+					<input type="date" id="cmdroom-bulk-date-from" class="cr-input" data-cr-bulk-filter="date_from" />
+				</div>
+				<div class="cmdroom-ia-field">
+					<label class="cr-label" for="cmdroom-bulk-date-to"><?php esc_html_e( 'Hasta', 'command-room' ); ?></label>
+					<input type="date" id="cmdroom-bulk-date-to" class="cr-input" data-cr-bulk-filter="date_to" />
+				</div>
+				<div class="cmdroom-ia-field" style="grid-column: 1 / -1;">
+					<label class="cr-label" for="cmdroom-bulk-search"><?php esc_html_e( 'Buscar en el título', 'command-room' ); ?></label>
+					<input type="text" id="cmdroom-bulk-search" class="cr-input" data-cr-bulk-filter="search" placeholder="<?php esc_attr_e( 'Opcional', 'command-room' ); ?>" />
+				</div>
+			</div>
+
+			<p class="cmdroom-tags-bulk-count" data-cr-bulk-count><?php esc_html_e( 'Ajusta los filtros para ver cuántos posts coinciden.', 'command-room' ); ?></p>
+
+			<div class="cmdroom-config-grid">
+				<div class="cmdroom-ia-field">
+					<label class="cr-label" for="cmdroom-bulk-add"><?php esc_html_e( 'Etiquetas a añadir (separadas por coma)', 'command-room' ); ?></label>
+					<input type="text" id="cmdroom-bulk-add" class="cr-input" placeholder="<?php esc_attr_e( 'nike, running', 'command-room' ); ?>" />
+				</div>
+				<div class="cmdroom-ia-field">
+					<label class="cr-label" for="cmdroom-bulk-remove"><?php esc_html_e( 'Etiquetas a quitar (separadas por coma)', 'command-room' ); ?></label>
+					<input type="text" id="cmdroom-bulk-remove" class="cr-input" placeholder="<?php esc_attr_e( 'sin-categorizar', 'command-room' ); ?>" />
+				</div>
+			</div>
+
+			<button type="button" class="cr-btn-primary" data-cr-bulk-apply><?php esc_html_e( 'Aplicar', 'command-room' ); ?></button>
+			<p class="cmdroom-tags-status" data-cr-bulk-status hidden></p>
+		</div>
+		<?php
+	}
+
+	private static function render_config_subtab() {
+		$opts = self::get_options();
+		?>
+		<div class="cr-card cmdroom-ia-block">
+			<h2 class="cmdroom-ia-block-title"><?php esc_html_e( 'Límite de etiquetas por post', 'command-room' ); ?></h2>
+			<p class="cmdroom-config-rule-desc"><?php esc_html_e( 'Aviso en el editor cuando un post supera este número de etiquetas — no se aplica solo, tú decides qué quitar.', 'command-room' ); ?></p>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmdroom-tags-limit-form">
+				<?php wp_nonce_field( 'cmdroom_save_tags' ); ?>
+				<input type="hidden" name="action" value="cmdroom_save_tags" />
+				<label class="cr-label" for="cmdroom-tags-max"><?php esc_html_e( 'Máximo recomendado (0 = sin límite)', 'command-room' ); ?></label>
+				<div class="cmdroom-tags-limit-row">
+					<input type="number" id="cmdroom-tags-max" class="cr-input" name="max_per_post" min="0" max="50" value="<?php echo esc_attr( $opts['max_per_post'] ); ?>" style="max-width:110px;" />
+					<?php submit_button( __( 'Guardar', 'command-room' ), 'cr-btn-primary', 'submit', false ); ?>
+				</div>
+			</form>
+
+			<p class="cmdroom-config-note">
+				<?php
+				printf(
+					/* translators: %s: enlace a Metas → Tags */
+					wp_kses( __( 'Las plantillas de título y meta descripción de las páginas de archivo de tags se configuran en %s.', 'command-room' ), array( 'a' => array( 'href' => array() ) ) ),
+					'<a href="' . esc_url( admin_url( 'admin.php?page=cmdroom-metas&tab=tags' ) ) . '">' . esc_html__( 'Metas → Tags', 'command-room' ) . '</a>'
+				);
+				?>
+			</p>
 		</div>
 		<?php
 	}

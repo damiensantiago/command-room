@@ -265,6 +265,17 @@
 	color: #c0392b;
 }
 
+.cmdroom-tags-subtabs {
+	margin-bottom: 18px;
+}
+
+.cmdroom-tags-bulk-count {
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--cmdroom-text-muted);
+	margin: 4px 0 18px;
+}
+
 .cmdroom-tags-table {
 	width: 100%;
 	border-collapse: collapse;

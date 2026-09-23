@@ -92,4 +92,85 @@
 			}
 		} );
 	} );
+
+	document.addEventListener( 'DOMContentLoaded', function () {
+		var bulkWrap = document.querySelector( '[data-cr-tags-bulk]' );
+		if ( ! bulkWrap ) {
+			return;
+		}
+
+		var bulkNonce   = bulkWrap.getAttribute( 'data-nonce' );
+		var countEl     = bulkWrap.querySelector( '[data-cr-bulk-count]' );
+		var statusEl    = bulkWrap.querySelector( '[data-cr-bulk-status]' );
+		var applyBtn    = bulkWrap.querySelector( '[data-cr-bulk-apply]' );
+		var addInput    = bulkWrap.querySelector( '#cmdroom-bulk-add' );
+		var removeInput = bulkWrap.querySelector( '#cmdroom-bulk-remove' );
+		var debounceTimer;
+
+		function bulkPost( action, extra ) {
+			var body = new URLSearchParams( Object.assign( { action: action, nonce: bulkNonce }, extra || {} ) );
+			return fetch( window.ajaxurl || '/wp-admin/admin-ajax.php', {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: body.toString(),
+			} ).then( function ( r ) { return r.json(); } );
+		}
+
+		function currentFilters() {
+			var filters = {};
+			bulkWrap.querySelectorAll( '[data-cr-bulk-filter]' ).forEach( function ( field ) {
+				filters[ field.getAttribute( 'data-cr-bulk-filter' ) ] = field.value;
+			} );
+			return filters;
+		}
+
+		function refreshCount() {
+			countEl.textContent = 'Contando…';
+			bulkPost( 'cmdroom_tags_bulk_preview', currentFilters() ).then( function ( res ) {
+				if ( res.success ) {
+					countEl.textContent = res.data.count + ' posts coinciden con estos filtros.';
+				} else {
+					countEl.textContent = res.data && res.data.message ? res.data.message : 'Error al contar.';
+				}
+			} );
+		}
+
+		bulkWrap.querySelectorAll( '[data-cr-bulk-filter]' ).forEach( function ( field ) {
+			field.addEventListener( 'input', function () {
+				clearTimeout( debounceTimer );
+				debounceTimer = setTimeout( refreshCount, 400 );
+			} );
+			field.addEventListener( 'change', refreshCount );
+		} );
+
+		refreshCount();
+
+		applyBtn.addEventListener( 'click', function () {
+			var addTags    = addInput.value.trim();
+			var removeTags = removeInput.value.trim();
+
+			if ( ! addTags && ! removeTags ) {
+				statusEl.hidden = false;
+				statusEl.classList.add( 'is-error' );
+				statusEl.textContent = 'Indica al menos una etiqueta para añadir o quitar.';
+				return;
+			}
+			if ( ! window.confirm( 'Aplicar estos cambios de etiquetas a todos los posts que coinciden con el filtro?' ) ) {
+				return;
+			}
+
+			applyBtn.disabled = true;
+			var payload = Object.assign( { add_tags: addTags, remove_tags: removeTags }, currentFilters() );
+			bulkPost( 'cmdroom_tags_bulk_apply', payload ).then( function ( res ) {
+				applyBtn.disabled = false;
+				statusEl.hidden = false;
+				statusEl.classList.toggle( 'is-error', ! res.success );
+				statusEl.textContent = res.success ? res.data.message : ( res.data && res.data.message ? res.data.message : 'Error al aplicar.' );
+				if ( res.success ) {
+					refreshCount();
+				}
+			} );
+		} );
+	} );
 }() );
