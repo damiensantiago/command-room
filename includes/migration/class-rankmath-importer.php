@@ -104,40 +104,70 @@ class Cmdroom_Rankmath_Importer {
 		return array( 'unmapped' => $count );
 	}
 
+	/**
+	 * Desde el rediseño de Metas (2026-09-22) ya no hay una plantilla por
+	 * post type/taxonomía real, sino un único bloque por grupo de página
+	 * (home/contenido/corporativas/categorias/tags) -- ver el docblock de
+	 * Cmdroom_Meta_Settings::content_post_types(). Se mapea cada campo de
+	 * Rank Math a su grupo: 'contenido' usa 'post' como representante (con
+	 * datos en casi cualquier sitio real) y si no tiene plantilla prueba
+	 * con el resto de tipos públicos no-page; 'corporativas' es 'page';
+	 * 'categorias' es la taxonomía 'category'; 'tags' es 'post_tag'.
+	 *
+	 * Bug corregido el 2026-09-23: hasta esta versión escribía en
+	 * `$opts['post_types'][...]`/`$opts['taxonomies'][...]`, una estructura
+	 * que Cmdroom_Meta_Settings ya no lee desde el rediseño por grupos --
+	 * la importación no fallaba pero tampoco cambiaba nada real. Encontrado
+	 * al construir el importador equivalente de Yoast y verificar en
+	 * dev.dripbase.co que el bloque importado no aparecía en Metas.
+	 */
 	private static function import_templates() {
 		$rm = get_option( 'rank-math-options-titles', array() );
 		if ( empty( $rm ) || ! is_array( $rm ) ) {
 			return array( 'imported' => false, 'reason' => 'No se encontró rank-math-options-titles.' );
 		}
 
-		// get_options() ya migra cualquier dato viejo (título/descripción
-		// separados) al bloque 'html' único -- partimos siempre de ahí para
-		// no reintroducir el formato antiguo al guardar.
-		$opts = Cmdroom_Meta_Settings::get_options();
+		$opts    = Cmdroom_Meta_Settings::get_options();
 		$touched = array();
 
-		foreach ( Cmdroom_Meta_Settings::public_post_types() as $pt ) {
-			$title_key = "pt_{$pt->name}_title";
-			$desc_key  = "pt_{$pt->name}_description";
-			if ( ! empty( $rm[ $title_key ] ) || ! empty( $rm[ $desc_key ] ) ) {
-				$opts['post_types'][ $pt->name ]['html'] = self::rankmath_block(
-					! empty( $rm[ $title_key ] ) ? $rm[ $title_key ] : '%title% %sep% %sitename%',
-					! empty( $rm[ $desc_key ] ) ? $rm[ $desc_key ] : '%excerpt%'
-				);
-				$touched[] = $pt->name . ' (bloque de <head>)';
+		$content_source = null;
+		$other_types    = array_diff( array_keys( Cmdroom_Meta_Settings::public_post_types() ), array( 'post', 'page' ) );
+		foreach ( array_merge( array( 'post' ), $other_types ) as $pt_name ) {
+			if ( ! empty( $rm[ "pt_{$pt_name}_title" ] ) || ! empty( $rm[ "pt_{$pt_name}_description" ] ) ) {
+				$content_source = $pt_name;
+				break;
 			}
 		}
+		if ( $content_source ) {
+			$opts['contenido']['html'] = self::rankmath_block(
+				! empty( $rm[ "pt_{$content_source}_title" ] ) ? $rm[ "pt_{$content_source}_title" ] : '%title% %sep% %sitename%',
+				! empty( $rm[ "pt_{$content_source}_description" ] ) ? $rm[ "pt_{$content_source}_description" ] : '%excerpt%'
+			);
+			$touched[] = 'contenido (bloque de <head>)';
+		}
 
-		foreach ( Cmdroom_Meta_Settings::public_taxonomies() as $tax ) {
-			$title_key = "tax_{$tax->name}_title";
-			$desc_key  = "tax_{$tax->name}_description";
-			if ( ! empty( $rm[ $title_key ] ) || ! empty( $rm[ $desc_key ] ) ) {
-				$opts['taxonomies'][ $tax->name ]['html'] = self::rankmath_block(
-					! empty( $rm[ $title_key ] ) ? $rm[ $title_key ] : '%term_title% %sep% %sitename%',
-					! empty( $rm[ $desc_key ] ) ? $rm[ $desc_key ] : '%excerpt%'
-				);
-				$touched[] = $tax->name . ' (bloque de <head>)';
-			}
+		if ( ! empty( $rm['pt_page_title'] ) || ! empty( $rm['pt_page_description'] ) ) {
+			$opts['corporativas']['html'] = self::rankmath_block(
+				! empty( $rm['pt_page_title'] ) ? $rm['pt_page_title'] : '%title% %sep% %sitename%',
+				! empty( $rm['pt_page_description'] ) ? $rm['pt_page_description'] : '%excerpt%'
+			);
+			$touched[] = 'corporativas (bloque de <head>)';
+		}
+
+		if ( ! empty( $rm['tax_category_title'] ) || ! empty( $rm['tax_category_description'] ) ) {
+			$opts['categorias']['html'] = self::rankmath_block(
+				! empty( $rm['tax_category_title'] ) ? $rm['tax_category_title'] : '%term_title% %sep% %sitename%',
+				! empty( $rm['tax_category_description'] ) ? $rm['tax_category_description'] : '%excerpt%'
+			);
+			$touched[] = 'categorias (bloque de <head>)';
+		}
+
+		if ( ! empty( $rm['tax_post_tag_title'] ) || ! empty( $rm['tax_post_tag_description'] ) ) {
+			$opts['tags']['html'] = self::rankmath_block(
+				! empty( $rm['tax_post_tag_title'] ) ? $rm['tax_post_tag_title'] : '%term_title% %sep% %sitename%',
+				! empty( $rm['tax_post_tag_description'] ) ? $rm['tax_post_tag_description'] : '%excerpt%'
+			);
+			$touched[] = 'tags (bloque de <head>)';
 		}
 
 		if ( ! empty( $rm['homepage_title'] ) || ! empty( $rm['homepage_description'] ) ) {
