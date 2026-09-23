@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Command Room
  * Description: Suite de SEO propia (metas, datos estructurados, sitemaps y redirecciones por plantilla) para sustituir Rank Math en los sitios WordPress de Damien.
- * Version: 0.12.0
+ * Version: 0.13.0
  * Author: Damien Santiago
  * Text Domain: command-room
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMDROOM_VERSION', '0.12.0' );
+define( 'CMDROOM_VERSION', '0.13.0' );
 define( 'CMDROOM_FILE', __FILE__ );
 define( 'CMDROOM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMDROOM_URL', plugin_dir_url( __FILE__ ) );
@@ -49,6 +49,7 @@ require_once CMDROOM_DIR . 'includes/archive-optimization/class-archive-optimiza
 require_once CMDROOM_DIR . 'includes/breadcrumbs/class-breadcrumbs-jsonld.php';
 require_once CMDROOM_DIR . 'includes/cleanup/class-cleanup-settings.php';
 require_once CMDROOM_DIR . 'includes/cleanup/class-cleanup.php';
+require_once CMDROOM_DIR . 'includes/server/class-server-admin.php';
 
 /**
  * Fase 1 (Metas) + Fase 2 (Datos estructurados) + Fase 3 (Sitemaps) +
@@ -88,6 +89,7 @@ function cmdroom_bootstrap() {
 	Cmdroom_Breadcrumbs_Jsonld::init();
 	Cmdroom_Cleanup_Settings::init();
 	Cmdroom_Cleanup::init();
+	Cmdroom_Server_Admin::init();
 }
 add_action( 'plugins_loaded', 'cmdroom_bootstrap' );
 

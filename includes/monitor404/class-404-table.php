@@ -14,6 +14,7 @@ class Cmdroom_404_Table {
 
 	public static function init() {
 		add_action( 'init', array( __CLASS__, 'maybe_create_table' ) );
+		self::schedule_purge();
 	}
 
 	public static function table_name() {
@@ -112,8 +113,37 @@ class Cmdroom_404_Table {
 		$wpdb->delete( self::table_name(), array( 'id' => $id ) );
 	}
 
+	/**
+	 * Borra (si existe) la fila cuya request_path coincide con una ruta ya
+	 * resuelta por una redirección nueva — se llama desde
+	 * Cmdroom_Redirect_Admin::handle_save() para que un 404 arreglado
+	 * desaparezca solo del registro, sin acción aparte.
+	 */
+	public static function delete_by_path( $path ) {
+		global $wpdb;
+		$path = '/' . trim( (string) $path, '/' );
+		$wpdb->delete( self::table_name(), array( 'request_path' => $path ) );
+	}
+
 	public static function count_total() {
 		global $wpdb;
 		return (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . self::table_name() );
+	}
+
+	/**
+	 * Cron diario: borra entradas con más de 30 días sin verse (spec del
+	 * rediseño "Servidor" 2026-09-23) — sin esto la tabla crecería sin
+	 * límite en un sitio con tráfico roto constante.
+	 */
+	public static function schedule_purge() {
+		if ( ! wp_next_scheduled( 'cmdroom_404_purge' ) ) {
+			wp_schedule_event( time(), 'daily', 'cmdroom_404_purge' );
+		}
+		add_action( 'cmdroom_404_purge', array( __CLASS__, 'purge_old' ) );
+	}
+
+	public static function purge_old() {
+		global $wpdb;
+		$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . self::table_name() . ' WHERE last_seen < %s', gmdate( 'Y-m-d H:i:s', strtotime( '-30 days' ) ) ) );
 	}
 }

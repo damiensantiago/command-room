@@ -5,47 +5,193 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Ejecuta las reglas de limpieza configuradas en Cmdroom_Cleanup_Settings.
- * Los hooks se registran siempre (igual que el resto del plugin) y cada
- * callback comprueba su propio toggle al vuelo — así un cambio de ajustes
- * se aplica en la siguiente petición sin depender de cuándo se cargó init().
+ * Los hooks se registran siempre y cada callback comprueba su propio toggle
+ * al vuelo — así un cambio de ajustes se aplica en la siguiente petición
+ * sin depender de cuándo se cargó init().
+ *
+ * Desde el rediseño "Servidor" (2026-09-23): https, www, /category/,
+ * adjuntos y barra final se resuelven todos en un único paso
+ * (maybe_normalize_request(), template_redirect prioridad -10, ANTES que
+ * Cmdroom_Redirect_Matcher en prioridad 0) que calcula la URL final
+ * completa y redirige una sola vez — nunca se encadenan varios
+ * wp_redirect() para la misma petición. Los parámetros de campaña (utm,
+ * fbclid, gclid) no redirigen: se limpian solo del canonical nativo de WP.
+ * Las tres reglas heredadas
+ * (X-Pingback, generator, versión en assets) siguen igual que antes.
  */
 class Cmdroom_Cleanup {
 
-	public static function init() {
-		// La forma segura de forzar con/sin barra final: dejar que la propia
-		// redirect_canonical() de WordPress haga el 301, cambiando solo qué
-		// considera "la forma correcta" — sin riesgo de bucle de
-		// redirecciones entre este código y el canonical nativo.
-		add_filter( 'user_trailingslashit', array( __CLASS__, 'filter_trailingslash' ), 20, 2 );
+	const UTM_PARAMS = array( 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid' );
 
-		add_action( 'template_redirect', array( __CLASS__, 'strip_replytocom' ), 5 );
+	public static function init() {
+		add_action( 'template_redirect', array( __CLASS__, 'maybe_normalize_request' ), -10 );
+
+		add_action( 'init', array( __CLASS__, 'maybe_register_catbase_rewrite' ) );
+		add_filter( 'category_link', array( __CLASS__, 'maybe_strip_category_base' ) );
+		add_filter( 'get_canonical_url', array( __CLASS__, 'maybe_strip_utm_from_canonical' ) );
+
 		add_filter( 'wp_headers', array( __CLASS__, 'maybe_remove_x_pingback_header' ) );
 		add_action( 'init', array( __CLASS__, 'maybe_remove_generator' ) );
 		add_filter( 'style_loader_src', array( __CLASS__, 'maybe_remove_core_version_query_arg' ), 9999 );
 		add_filter( 'script_loader_src', array( __CLASS__, 'maybe_remove_core_version_query_arg' ), 9999 );
 	}
 
-	public static function filter_trailingslash( $string, $type_of_url = '' ) {
-		$mode = Cmdroom_Cleanup_Settings::get_trailing_slash_mode();
-		if ( Cmdroom_Cleanup_Settings::TRAILING_SLASH_STRIP === $mode ) {
-			return untrailingslashit( $string );
+	/**
+	 * "Quitar /category/ de la URL" sin vaciar category_base a ciegas (eso
+	 * ya causó una colisión real de slugs de término contra páginas en
+	 * Italae — ver vault reference_italae_slugs_categorias.md). En su lugar
+	 * se añade una regla de reescritura de baja prioridad ('bottom'): las
+	 * páginas/entradas siguen resolviéndose primero, y solo si nada más
+	 * coincide con el slug se prueba como categoría.
+	 */
+	public static function maybe_register_catbase_rewrite() {
+		if ( ! Cmdroom_Cleanup_Settings::is_enabled( 'catbase' ) ) {
+			return;
 		}
-		if ( Cmdroom_Cleanup_Settings::TRAILING_SLASH_ADD === $mode ) {
-			return trailingslashit( $string );
-		}
-		return $string;
+		add_rewrite_rule( '^([^/]+)/?$', 'index.php?category_name=$matches[1]', 'bottom' );
 	}
 
-	public static function strip_replytocom() {
-		if ( ! Cmdroom_Cleanup_Settings::is_enabled( 'strip_replytocom' ) ) {
-			return;
+	public static function maybe_strip_category_base( $link ) {
+		if ( ! Cmdroom_Cleanup_Settings::is_enabled( 'catbase' ) ) {
+			return $link;
 		}
-		if ( is_admin() || ! isset( $_GET['replytocom'] ) || 'GET' !== ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) ) {
+		return str_replace( '/category/', '/', $link );
+	}
+
+	public static function maybe_strip_utm_from_canonical( $canonical ) {
+		if ( ! $canonical || ! Cmdroom_Cleanup_Settings::is_enabled( 'utm' ) ) {
+			return $canonical;
+		}
+		return remove_query_arg( self::UTM_PARAMS, $canonical );
+	}
+
+	/**
+	 * Paso único de normalización de la petición: https, www canónico,
+	 * adjuntos, /category/ legado y barra final. Si el resultado difiere de
+	 * la URL actual, UN solo redirect 301 -- nunca varios.
+	 */
+	public static function maybe_normalize_request() {
+		if ( is_admin() || wp_doing_ajax() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || wp_doing_cron() ) {
 			return;
 		}
 
-		$clean_url = remove_query_arg( 'replytocom' );
-		wp_safe_redirect( $clean_url, 301 );
+		$clean = array();
+		foreach ( array( 'https', 'www', 'attach', 'catbase', 'slash', 'strip_replytocom' ) as $rule ) {
+			$clean[ $rule ] = Cmdroom_Cleanup_Settings::is_enabled( $rule );
+		}
+		if ( ! array_filter( $clean ) ) {
+			return;
+		}
+
+		// Caso especial: página de adjunto -- redirige a una URL
+		// completamente distinta (el archivo o la entrada padre); el resto
+		// de reglas de transporte (https/www) se aplican sobre ESA url
+		// antes de redirigir, y ahí termina el proceso para esta petición.
+		if ( $clean['attach'] && is_attachment() ) {
+			$target = self::attachment_target_url();
+			if ( $target ) {
+				self::redirect_to( self::apply_scheme_and_host( $target, $clean ) );
+			}
+			return;
+		}
+
+		$scheme = is_ssl() ? 'https' : 'http';
+		$host   = isset( $_SERVER['HTTP_HOST'] ) ? $_SERVER['HTTP_HOST'] : '';
+		$transport_changed = false;
+
+		if ( $clean['https'] && ! is_ssl() ) {
+			$scheme = 'https';
+			$transport_changed = true;
+		}
+
+		if ( $clean['www'] ) {
+			$desired_host = wp_parse_url( home_url(), PHP_URL_HOST );
+			if ( $desired_host && $host && strtolower( $host ) !== strtolower( $desired_host ) ) {
+				$host = $desired_host;
+				$transport_changed = true;
+			}
+		}
+
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : '/';
+		$parts = explode( '?', $uri, 2 );
+		$path  = $parts[0];
+		$query = isset( $parts[1] ) ? $parts[1] : '';
+		$path_changed = false;
+
+		if ( $clean['catbase'] && 0 === strpos( $path, '/category/' ) ) {
+			$path = substr( $path, strlen( '/category' ) );
+			$path_changed = true;
+		}
+
+		if ( $clean['slash'] && '' === $query && ! preg_match( '/\.[a-z0-9]{1,6}$/i', $path ) ) {
+			$wants_slash = Cmdroom_Cleanup_Settings::wants_trailing_slash();
+			$has_slash   = '/' === substr( $path, -1 );
+			if ( $wants_slash && ! $has_slash && '' !== $path ) {
+				$path .= '/';
+				$path_changed = true;
+			} elseif ( ! $wants_slash && $has_slash && '/' !== $path ) {
+				$path = untrailingslashit( $path );
+				$path_changed = true;
+			}
+		}
+
+		$query_changed = false;
+		if ( $clean['strip_replytocom'] && $query && false !== strpos( $query, 'replytocom' ) ) {
+			parse_str( $query, $query_args );
+			if ( isset( $query_args['replytocom'] ) ) {
+				unset( $query_args['replytocom'] );
+				$query = http_build_query( $query_args );
+				$query_changed = true;
+			}
+		}
+
+		if ( ! $transport_changed && ! $path_changed && ! $query_changed ) {
+			return;
+		}
+
+		self::redirect_to( $scheme . '://' . $host . $path . ( $query ? '?' . $query : '' ) );
+	}
+
+	private static function attachment_target_url() {
+		$post = get_queried_object();
+		if ( ! $post instanceof WP_Post ) {
+			return '';
+		}
+		$file_url = wp_get_attachment_url( $post->ID );
+		if ( $file_url ) {
+			return $file_url;
+		}
+		if ( $post->post_parent ) {
+			$parent_link = get_permalink( $post->post_parent );
+			if ( $parent_link ) {
+				return $parent_link;
+			}
+		}
+		return home_url( '/' );
+	}
+
+	private static function apply_scheme_and_host( $url, $clean ) {
+		if ( ! empty( $clean['https'] ) ) {
+			$url = set_url_scheme( $url, 'https' );
+		}
+		if ( ! empty( $clean['www'] ) ) {
+			$desired_host = wp_parse_url( home_url(), PHP_URL_HOST );
+			$parts        = wp_parse_url( $url );
+			if ( $desired_host && ! empty( $parts['host'] ) && strtolower( $parts['host'] ) !== strtolower( $desired_host ) ) {
+				$url = preg_replace( '#^(https?://)[^/]+#i', '$1' . $desired_host, $url );
+			}
+		}
+		return $url;
+	}
+
+	/**
+	 * wp_redirect() a propósito, no wp_safe_redirect(): el host de destino
+	 * (cuando cambia por "www") viene de home_url(), no de input del
+	 * usuario, así que ya está validado -- wp_safe_redirect() lo rechazaría
+	 * por no coincidir con el host de la petición actual.
+	 */
+	private static function redirect_to( $url ) {
+		wp_redirect( $url, 301 );
 		exit;
 	}
 

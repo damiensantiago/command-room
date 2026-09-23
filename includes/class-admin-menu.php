@@ -21,6 +21,16 @@ class Cmdroom_Admin_Menu {
 	 */
 	const OPTION_VISIBILITY = 'cmdroom_menu_visibility';
 
+	/**
+	 * "Redirecciones", "Monitor 404" y "Limpieza HTTP/permalinks" dejaron de
+	 * tener página propia con el rediseño "Servidor" (2026-09-23) — siguen
+	 * en get_submenus()/get_descriptions() para la tabla de módulos de
+	 * General (cada uno conserva su interruptor de visibilidad, que ahora
+	 * decide si su pestaña aparece dentro de "Servidor"), pero
+	 * register_menu() no les crea un add_submenu_page propio.
+	 */
+	const MERGED_SERVER_SLUGS = array( 'redirects', 'monitor404', 'cleanup' );
+
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ) );
 		add_action( 'admin_post_cmdroom_save_menu_visibility', array( __CLASS__, 'handle_save_menu_visibility' ) );
@@ -62,6 +72,13 @@ class Cmdroom_Admin_Menu {
 		$visibility = self::get_menu_visibility();
 
 		foreach ( self::get_submenus() as $slug => $label ) {
+			// Ya no tienen página propia -- absorbidos por "servidor" (ver
+			// más abajo). Siguen en get_submenus() solo para la tabla de
+			// módulos de General.
+			if ( in_array( $slug, self::MERGED_SERVER_SLUGS, true ) ) {
+				continue;
+			}
+
 			$page_slug = 'general' === $slug ? self::SLUG : self::SLUG . '-' . $slug;
 			// Los slugs con guion (image-seo) no pueden ser sufijo de un
 			// nombre de método PHP: se traducen a guion bajo solo para
@@ -73,9 +90,13 @@ class Cmdroom_Admin_Menu {
 			// a cmdroom_menu_visibility: si está desmarcado se registra con
 			// parent_slug vacío, lo que hace que WordPress cree la página
 			// igualmente (URL directa, capability, hook) pero no la cuelgue
-			// de ningún menú.
+			// de ningún menú. "servidor" además se esconde si sus tres
+			// módulos (redirects/monitor404/cleanup) están ocultos a la vez.
 			$parent_slug = self::SLUG;
 			if ( 'general' !== $slug && empty( $visibility[ $slug ] ) ) {
+				$parent_slug = null;
+			}
+			if ( 'servidor' === $slug && ! self::any_server_module_visible( $visibility ) ) {
 				$parent_slug = null;
 			}
 
@@ -88,6 +109,31 @@ class Cmdroom_Admin_Menu {
 				array( __CLASS__, 'render_' . $method_slug )
 			);
 		}
+
+		// Slugs antiguos de Redirecciones/Monitor 404/Limpieza: la URL
+		// directa sigue funcionando (redirige a su pestaña en "Servidor"),
+		// sin colgar de ningún menú, para no romper bookmarks.
+		foreach ( Cmdroom_Server_Admin::LEGACY_REDIRECTS as $old_slug => $tab ) {
+			add_submenu_page(
+				null,
+				$old_slug,
+				$old_slug,
+				self::CAPABILITY,
+				$old_slug,
+				function () use ( $old_slug ) {
+					Cmdroom_Server_Admin::render_legacy_redirect( $old_slug );
+				}
+			);
+		}
+	}
+
+	private static function any_server_module_visible( $visibility ) {
+		foreach ( self::MERGED_SERVER_SLUGS as $slug ) {
+			if ( ! empty( $visibility[ $slug ] ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -103,12 +149,13 @@ class Cmdroom_Admin_Menu {
 			'archives'     => __( 'Archivos y taxonomías', 'command-room' ),
 			'breadcrumbs'  => __( 'Breadcrumbs', 'command-room' ),
 			'sitemaps'     => __( 'Sitemaps', 'command-room' ),
-			'redirects'    => __( 'Redirecciones', 'command-room' ),
-			'monitor404'   => __( 'Monitor 404', 'command-room' ),
 			'robots'       => __( 'Robots.txt', 'command-room' ),
+			'servidor'     => __( 'Servidor', 'command-room' ),
+			'redirects'    => __( 'Servidor → Redirecciones', 'command-room' ),
+			'monitor404'   => __( 'Servidor → Monitor 404', 'command-room' ),
+			'cleanup'      => __( 'Servidor → Limpieza HTTP/permalinks', 'command-room' ),
 			'code'         => __( 'Inyección de código', 'command-room' ),
 			'image-seo'    => __( 'Auto-Image SEO', 'command-room' ),
-			'cleanup'      => __( 'Limpieza HTTP/permalinks', 'command-room' ),
 			'tools'        => __( 'Herramientas', 'command-room' ),
 		);
 	}
@@ -125,12 +172,13 @@ class Cmdroom_Admin_Menu {
 			'archives'    => __( 'Ajustes de optimización de archivos y páginas de taxonomía.', 'command-room' ),
 			'breadcrumbs' => __( 'Configuración de las migas de pan (breadcrumbs) y su salida como BreadcrumbList en el schema.', 'command-room' ),
 			'sitemaps'    => __( 'Generación y ajustes de los sitemaps XML del sitio.', 'command-room' ),
-			'redirects'   => __( 'Gestor de reglas de redirección 301/302.', 'command-room' ),
-			'monitor404'  => __( 'Registro de URLs que devuelven 404 en el sitio, para detectar enlaces rotos.', 'command-room' ),
 			'robots'      => __( 'Editor del contenido de robots.txt y control de acceso de bots de IA (GPTBot, ClaudeBot, etc.).', 'command-room' ),
+			'servidor'    => __( 'Redirecciones, monitor de 404 y limpieza HTTP/permalinks — todo resuelto en PHP, sin tocar .htaccess.', 'command-room' ),
+			'redirects'   => __( 'Gestor de reglas de redirección (301/302/307/410/451, exacto o regex). Pestaña de Servidor.', 'command-room' ),
+			'monitor404'  => __( 'Registro de URLs que devuelven 404 en el sitio, para detectar enlaces rotos. Pestaña de Servidor.', 'command-room' ),
+			'cleanup'     => __( 'HTTPS/www canónico, barra final, /category/, adjuntos, UTM y cabeceras. Pestaña de Servidor.', 'command-room' ),
 			'code'        => __( 'Inyección de fragmentos de código (head/body/footer) sin tocar el tema.', 'command-room' ),
 			'image-seo'   => __( 'Generación automática de atributos alt/title de imágenes.', 'command-room' ),
-			'cleanup'     => __( 'Limpieza de cabeceras HTTP innecesarias y ajustes de permalinks.', 'command-room' ),
 			'tools'       => __( 'Herramientas de importación desde Rank Math y vista previa de metas/schema.', 'command-room' ),
 		);
 	}
@@ -203,8 +251,17 @@ class Cmdroom_Admin_Menu {
 							if ( 'general' === $slug ) {
 								continue;
 							}
-							$page_slug   = self::SLUG . '-' . $slug;
-							$url         = admin_url( 'admin.php?page=' . $page_slug );
+							// Las tres pestañas de "Servidor" ya no tienen
+							// página propia -- enlazan a su pestaña dentro de
+							// cmdroom-servidor en vez de a un page_slug que
+							// ya no existe.
+							if ( in_array( $slug, self::MERGED_SERVER_SLUGS, true ) ) {
+								$tab_map = array( 'redirects' => 'redirects', 'monitor404' => '404', 'cleanup' => 'clean' );
+								$url     = Cmdroom_Server_Admin::tab_url( $tab_map[ $slug ] );
+							} else {
+								$page_slug = self::SLUG . '-' . $slug;
+								$url       = admin_url( 'admin.php?page=' . $page_slug );
+							}
 							$description = isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : '';
 							$is_visible  = ! empty( $visibility[ $slug ] );
 							?>
@@ -242,6 +299,10 @@ class Cmdroom_Admin_Menu {
 			// movidas aquí con el rediseño de esa pantalla -- ver
 			// Cmdroom_Sitemap_Settings::render_general_section().
 			Cmdroom_Sitemap_Settings::render_general_section();
+
+			// Salida en vivo de Redirecciones (pestaña de "Servidor"): mismo
+			// motivo -- ver Cmdroom_Redirect_Admin::render_general_section().
+			Cmdroom_Redirect_Admin::render_general_section();
 			?>
 		</div>
 		<?php
@@ -312,16 +373,12 @@ class Cmdroom_Admin_Menu {
 		Cmdroom_Sitemap_Settings::render_page();
 	}
 
-	public static function render_redirects() {
-		Cmdroom_Redirect_Admin::render_page();
-	}
-
 	public static function render_robots() {
 		Cmdroom_Robots_Settings::render_page();
 	}
 
-	public static function render_monitor404() {
-		Cmdroom_404_Admin::render_page();
+	public static function render_servidor() {
+		Cmdroom_Server_Admin::render_page();
 	}
 
 	public static function render_code() {
@@ -330,10 +387,6 @@ class Cmdroom_Admin_Menu {
 
 	public static function render_image_seo() {
 		Cmdroom_Image_Seo_Settings::render_page();
-	}
-
-	public static function render_cleanup() {
-		Cmdroom_Cleanup_Settings::render_page();
 	}
 
 	public static function render_tools() {
