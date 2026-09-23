@@ -4,16 +4,25 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Ejecuta las reglas de Auto-Image SEO en el momento de subir una imagen:
- * renombrado físico (wp_handle_upload_prefilter, antes de que el archivo se
- * mueva a uploads/) y alt/título (add_attachment, cuando ya existe el post
- * de adjunto y — si se subió desde el editor de un post — su post_parent).
+ * Ejecuta las reglas de Auto-Image SEO. Desde el rediseño "Configuración"
+ * (2026-09-23) hay tres puntos de aplicación, no solo el momento de subida:
+ *  - `add_attachment`: escribe el alt en la biblioteca de medios (regla
+ *    'upload'), como antes.
+ *  - `wp_get_attachment_image_attributes`: rellena alt/title cuando el tema
+ *    pinta una imagen con wp_get_attachment_image() (galerías, thumbnails,
+ *    imágenes destacadas) aunque la imagen ya llevara tiempo en la
+ *    biblioteca.
+ *  - `the_content`: rellena alt/title de las etiquetas <img> sueltas dentro
+ *    del contenido, vía WP_HTML_Tag_Processor.
+ * En los tres casos, nunca se sobrescribe un alt/title que ya tenga valor.
  */
 class Cmdroom_Image_Seo {
 
 	public static function init() {
 		add_filter( 'wp_handle_upload_prefilter', array( __CLASS__, 'maybe_rename_file' ) );
-		add_action( 'add_attachment', array( __CLASS__, 'maybe_fill_alt_title' ) );
+		add_action( 'add_attachment', array( __CLASS__, 'maybe_save_alt_on_upload' ) );
+		add_filter( 'wp_get_attachment_image_attributes', array( __CLASS__, 'filter_image_attributes' ), 10, 2 );
+		add_filter( 'the_content', array( __CLASS__, 'filter_content_images' ), 20 );
 	}
 
 	public static function maybe_rename_file( $file ) {
@@ -49,61 +58,125 @@ class Cmdroom_Image_Seo {
 		return $file;
 	}
 
-	public static function maybe_fill_alt_title( $attachment_id ) {
+	public static function maybe_save_alt_on_upload( $attachment_id ) {
+		if ( ! Cmdroom_Image_Seo_Settings::is_enabled( 'upload' ) || ! Cmdroom_Image_Seo_Settings::is_enabled( 'alt' ) ) {
+			return;
+		}
 		$attachment = get_post( $attachment_id );
 		if ( ! $attachment || 0 !== strpos( (string) $attachment->post_mime_type, 'image/' ) ) {
 			return;
 		}
-
-		$label = self::resolve_label( $attachment );
-		if ( '' === $label ) {
-			return;
+		if ( '' !== get_post_meta( $attachment_id, '_wp_attachment_image_alt', true ) ) {
+			return; // ya tiene alt -- nunca se sobrescribe
 		}
 
-		if ( Cmdroom_Image_Seo_Settings::is_enabled( 'alt_from_parent_title' ) || Cmdroom_Image_Seo_Settings::is_enabled( 'alt_from_filename' ) ) {
-			$existing_alt = get_post_meta( $attachment_id, '_wp_attachment_image_alt', true );
-			if ( '' === $existing_alt ) {
-				update_post_meta( $attachment_id, '_wp_attachment_image_alt', $label );
-			}
-		}
-
-		if ( Cmdroom_Image_Seo_Settings::is_enabled( 'title_auto' ) ) {
-			// Solo si el título sigue siendo el genérico que pone WP al
-			// subir (el nombre de archivo sin extensión) — así no se pisa
-			// un título que alguien ya haya editado a mano.
-			$default_title = preg_replace( '/\.[^.]+$/', '', basename( get_attached_file( $attachment_id ) ) );
-			if ( '' === $attachment->post_title || sanitize_title( $attachment->post_title ) === sanitize_title( $default_title ) ) {
-				wp_update_post( array( 'ID' => $attachment_id, 'post_title' => $label ) );
-			}
+		$alt = self::resolve_alt( $attachment_id );
+		if ( '' !== $alt ) {
+			update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt );
 		}
 	}
 
-	/**
-	 * Decide qué texto usar: el título del post padre si la regla está
-	 * activa y hay post_parent; si no, el nombre de archivo legible.
-	 */
-	private static function resolve_label( WP_Post $attachment ) {
-		if ( Cmdroom_Image_Seo_Settings::is_enabled( 'alt_from_parent_title' ) && $attachment->post_parent ) {
+	public static function filter_image_attributes( $attr, $attachment ) {
+		if ( Cmdroom_Image_Seo_Settings::is_enabled( 'alt' ) && empty( $attr['alt'] ) ) {
+			$alt = self::resolve_alt( $attachment->ID );
+			if ( '' !== $alt ) {
+				$attr['alt'] = $alt;
+			}
+		}
+		if ( Cmdroom_Image_Seo_Settings::is_enabled( 'title' ) && empty( $attr['title'] ) ) {
+			$title = self::resolve_title( $attachment->ID );
+			if ( '' !== $title ) {
+				$attr['title'] = $title;
+			}
+		}
+		return $attr;
+	}
+
+	public static function filter_content_images( $content ) {
+		$do_alt   = Cmdroom_Image_Seo_Settings::is_enabled( 'alt' );
+		$do_title = Cmdroom_Image_Seo_Settings::is_enabled( 'title' );
+		if ( ( ! $do_alt && ! $do_title ) || false === strpos( $content, '<img' ) || ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
+			return $content;
+		}
+
+		$p = new WP_HTML_Tag_Processor( $content );
+		while ( $p->next_tag( 'img' ) ) {
+			$src = $p->get_attribute( 'src' );
+			if ( ! $src ) {
+				continue;
+			}
+			$attachment_id = attachment_url_to_postid( $src );
+			if ( ! $attachment_id ) {
+				continue;
+			}
+
+			if ( $do_alt && ! $p->get_attribute( 'alt' ) ) {
+				$alt = self::resolve_alt( $attachment_id );
+				if ( '' !== $alt ) {
+					$p->set_attribute( 'alt', $alt );
+				}
+			}
+			if ( $do_title && ! $p->get_attribute( 'title' ) ) {
+				$title = self::resolve_title( $attachment_id );
+				if ( '' !== $title ) {
+					$p->set_attribute( 'title', $title );
+				}
+			}
+		}
+
+		return $p->get_updated_html();
+	}
+
+	public static function resolve_alt( $attachment_id ) {
+		$existing = get_post_meta( $attachment_id, '_wp_attachment_image_alt', true );
+		if ( '' !== $existing ) {
+			return $existing;
+		}
+		$opts = Cmdroom_Image_Seo_Settings::get_options();
+		return self::replace_vars( $opts['alt_tpl'], $attachment_id );
+	}
+
+	public static function resolve_title( $attachment_id ) {
+		$opts = Cmdroom_Image_Seo_Settings::get_options();
+		return self::replace_vars( $opts['title_tpl'], $attachment_id );
+	}
+
+	public static function replace_vars( $template, $attachment_id ) {
+		return strtr( $template, array(
+			'%image_name%' => self::image_name_var( $attachment_id ),
+			'%title%'      => self::title_var( $attachment_id ),
+			'%sitename%'   => get_bloginfo( 'name' ),
+		) );
+	}
+
+	public static function image_name_var( $attachment_id ) {
+		$file = get_attached_file( $attachment_id );
+		$name = $file ? basename( $file ) : get_the_title( $attachment_id );
+		$name = preg_replace( '/\.[^.]+$/', '', $name );
+
+		if ( Cmdroom_Image_Seo_Settings::is_enabled( 'clean' ) ) {
+			$name = preg_replace( '/-scaled$/', '', $name );
+			$name = preg_replace( '/-\d+x\d+$/', '', $name );
+			$name = preg_replace( '/-\d+$/', '', $name );
+		}
+
+		$name = str_replace( array( '-', '_' ), ' ', $name );
+		$name = trim( preg_replace( '/\s+/', ' ', $name ) );
+		return $name ? ucfirst( $name ) : '';
+	}
+
+	private static function title_var( $attachment_id ) {
+		$attachment = get_post( $attachment_id );
+		if ( ! $attachment ) {
+			return '';
+		}
+		if ( $attachment->post_parent ) {
 			$parent = get_post( $attachment->post_parent );
 			if ( $parent && $parent->post_title ) {
 				return $parent->post_title;
 			}
 		}
-
-		if ( Cmdroom_Image_Seo_Settings::is_enabled( 'alt_from_filename' ) ) {
-			$file = get_attached_file( $attachment->ID );
-			return self::filename_to_label( $file ? basename( $file ) : $attachment->post_title );
-		}
-
-		return '';
-	}
-
-	private static function filename_to_label( $filename ) {
-		$name = preg_replace( '/\.[^.]+$/', '', $filename );
-		$name = sanitize_title( $name );
-		$name = str_replace( '-', ' ', $name );
-		$name = trim( preg_replace( '/\s+/', ' ', $name ) );
-		return $name ? ucfirst( $name ) : '';
+		return $attachment->post_title ? $attachment->post_title : self::image_name_var( $attachment_id );
 	}
 
 	/**

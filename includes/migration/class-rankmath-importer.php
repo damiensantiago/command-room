@@ -15,7 +15,6 @@ class Cmdroom_Rankmath_Importer {
 
 	public static function init() {
 		add_action( 'admin_post_cmdroom_import_rankmath', array( __CLASS__, 'handle_import' ) );
-		add_action( 'admin_post_cmdroom_import_rankmath_redirects', array( __CLASS__, 'handle_import_redirects' ) );
 	}
 
 	public static function is_rankmath_active() {
@@ -24,22 +23,85 @@ class Cmdroom_Rankmath_Importer {
 			: defined( 'RANK_MATH_VERSION' );
 	}
 
+	/**
+	 * Recuento rápido para el texto de estado antes de importar ("Rank Math
+	 * detectado · N entradas con datos") -- misma condición que usa la query
+	 * real de import_post_meta(), pero con fields=ids y sin procesar nada.
+	 */
+	public static function count_importable_posts() {
+		$post_types = wp_list_pluck( Cmdroom_Meta_Settings::public_post_types(), 'name' );
+		$query      = new WP_Query( array(
+			'post_type'      => $post_types,
+			'post_status'    => 'any',
+			'posts_per_page' => -1,
+			'fields'         => 'ids',
+			'meta_query'     => array(
+				'relation' => 'OR',
+				array( 'key' => 'rank_math_title', 'compare' => 'EXISTS' ),
+				array( 'key' => 'rank_math_description', 'compare' => 'EXISTS' ),
+			),
+		) );
+		return count( $query->posts );
+	}
+
+	/**
+	 * Una sola acción para las 4 casillas del handoff ("Metas y plantillas",
+	 * "Robots y canonicals", "Redirecciones", "Schema") en vez de las dos
+	 * acciones sueltas que había antes (una para metas+plantillas, otra para
+	 * redirecciones) -- cada casilla activa/desactiva su propio bloque de
+	 * trabajo, todas comparten el mismo informe final.
+	 *
+	 * Sigue siendo síncrona (sin AJAX por lotes): con los volúmenes reales
+	 * de los sitios de Damien (cientos de entradas, no decenas de miles) un
+	 * POST normal tarda bien dentro del timeout de PHP -- el progreso por
+	 * lotes del prototipo se deja para si algún día hiciera falta.
+	 */
 	public static function handle_import() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'command-room' ) );
 		}
 		check_admin_referer( 'cmdroom_import_rankmath' );
 
-		$templates_result = self::import_templates();
-		$posts_result      = self::import_post_meta();
+		$do_meta      = ! empty( $_POST['import_meta'] );
+		$do_robots    = ! empty( $_POST['import_robots'] );
+		$do_redirects = ! empty( $_POST['import_redirects'] );
+		$do_schema    = ! empty( $_POST['import_schema'] );
 
-		set_transient( 'cmdroom_import_report', array(
-			'templates' => $templates_result,
-			'posts'     => $posts_result,
-		), 60 );
+		$report = array();
+
+		if ( $do_meta ) {
+			$report['templates'] = self::import_templates();
+		}
+		if ( $do_meta || $do_robots ) {
+			$report['posts'] = self::import_post_meta( $do_meta, $do_robots );
+		}
+		if ( $do_redirects ) {
+			$report['redirects'] = self::import_redirects();
+		}
+		if ( $do_schema ) {
+			$report['schema'] = self::log_unmapped_schema();
+		}
+
+		set_transient( 'cmdroom_import_report', $report, MINUTE_IN_SECONDS );
 
 		wp_safe_redirect( add_query_arg( 'cmdroom_imported', '1', wp_get_referer() ) );
 		exit;
+	}
+
+	/**
+	 * Command Room no tiene (todavía) un override de schema por post -- el
+	 * módulo de Datos estructurados es por tipo de contenido/plantilla, no
+	 * por entrada individual. En vez de fingir una importación que no existe,
+	 * se cuenta cuántas entradas tienen schema propio en Rank Math y se deja
+	 * constancia en el informe, tal como pide el handoff ("los que no tienen
+	 * equivalente se registran en un log").
+	 */
+	private static function log_unmapped_schema() {
+		global $wpdb;
+		$count = (int) $wpdb->get_var(
+			"SELECT COUNT(DISTINCT post_id) FROM {$wpdb->postmeta} WHERE meta_key LIKE 'rank_math_schema_%'"
+		);
+		return array( 'unmapped' => $count );
 	}
 
 	private static function import_templates() {
@@ -101,7 +163,13 @@ class Cmdroom_Rankmath_Importer {
 		return sprintf( "<title>%s</title>\n<meta name=\"description\" content=\"%s\" />", $title, $description );
 	}
 
-	private static function import_post_meta() {
+	/**
+	 * $do_meta controla título/descripción, $do_robots controla canonical +
+	 * noindex/nofollow -- son las casillas "Metas y plantillas" y "Robots y
+	 * canonicals" del handoff, independientes entre sí pero comparten la
+	 * misma query (ambas miran las mismas entradas con datos de Rank Math).
+	 */
+	private static function import_post_meta( $do_meta = true, $do_robots = true ) {
 		$post_types = wp_list_pluck( Cmdroom_Meta_Settings::public_post_types(), 'name' );
 
 		$query = new WP_Query( array(
@@ -128,42 +196,32 @@ class Cmdroom_Rankmath_Importer {
 				continue;
 			}
 
-			$rm_title = get_post_meta( $post_id, 'rank_math_title', true );
-			$rm_desc  = get_post_meta( $post_id, 'rank_math_description', true );
-			$rm_canon = get_post_meta( $post_id, 'rank_math_canonical_url', true );
-			$rm_robots = get_post_meta( $post_id, 'rank_math_robots', true );
-
-			if ( $rm_title ) {
-				update_post_meta( $post_id, '_cmdroom_title', $rm_title );
-			}
-			if ( $rm_desc ) {
-				update_post_meta( $post_id, '_cmdroom_description', $rm_desc );
-			}
-			if ( $rm_canon ) {
-				update_post_meta( $post_id, '_cmdroom_canonical', $rm_canon );
+			if ( $do_meta ) {
+				$rm_title = get_post_meta( $post_id, 'rank_math_title', true );
+				$rm_desc  = get_post_meta( $post_id, 'rank_math_description', true );
+				if ( $rm_title ) {
+					update_post_meta( $post_id, '_cmdroom_title', $rm_title );
+				}
+				if ( $rm_desc ) {
+					update_post_meta( $post_id, '_cmdroom_description', $rm_desc );
+				}
 			}
 
-			$robots = is_array( $rm_robots ) ? $rm_robots : array();
-			update_post_meta( $post_id, '_cmdroom_noindex', in_array( 'noindex', $robots, true ) ? 1 : 0 );
-			update_post_meta( $post_id, '_cmdroom_nofollow', in_array( 'nofollow', $robots, true ) ? 1 : 0 );
+			if ( $do_robots ) {
+				$rm_canon  = get_post_meta( $post_id, 'rank_math_canonical_url', true );
+				$rm_robots = get_post_meta( $post_id, 'rank_math_robots', true );
+				if ( $rm_canon ) {
+					update_post_meta( $post_id, '_cmdroom_canonical', $rm_canon );
+				}
+				$robots = is_array( $rm_robots ) ? $rm_robots : array();
+				update_post_meta( $post_id, '_cmdroom_noindex', in_array( 'noindex', $robots, true ) ? 1 : 0 );
+				update_post_meta( $post_id, '_cmdroom_nofollow', in_array( 'nofollow', $robots, true ) ? 1 : 0 );
+			}
 
 			$imported++;
 		}
 
 		return array( 'imported' => $imported, 'skipped' => $skipped, 'total_encontrados' => count( $query->posts ) );
-	}
-
-	public static function handle_import_redirects() {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'command-room' ) );
-		}
-		check_admin_referer( 'cmdroom_import_rankmath_redirects' );
-
-		$result = self::import_redirects();
-		set_transient( 'cmdroom_import_redirects_report', $result, 60 );
-
-		wp_safe_redirect( add_query_arg( 'cmdroom_imported_redirects', '1', wp_get_referer() ) );
-		exit;
 	}
 
 	/**

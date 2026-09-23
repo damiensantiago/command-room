@@ -243,26 +243,37 @@ class Cmdroom_Meta_Resolver {
 			$noindex  = (bool) get_post_meta( $post_id, '_cmdroom_noindex', true );
 			$nofollow = (bool) get_post_meta( $post_id, '_cmdroom_nofollow', true );
 		} elseif ( isset( $context['term'] ) && $context['term'] instanceof WP_Term ) {
-			if ( self::archive_rule_enabled( 'noindex_empty_terms' ) && 0 === (int) $context['term']->count ) {
+			$term = $context['term'];
+			if ( self::archive_rule_enabled( 'emptyterm' ) && 0 === (int) $term->count ) {
+				$noindex = true;
+			}
+			if ( 'post_tag' === $term->taxonomy && self::archive_rule_enabled( 'tags' ) ) {
+				$noindex = true;
+			}
+			if ( 'post_format' === $term->taxonomy && self::archive_rule_enabled( 'format' ) ) {
 				$noindex = true;
 			}
 		} elseif ( isset( $context['author'] ) && $context['author'] instanceof WP_User ) {
-			if ( self::archive_rule_enabled( 'noindex_author' ) ) {
+			if ( self::archive_rule_enabled( 'author' ) ) {
 				$noindex = true;
 			}
 		} elseif ( ! empty( $context['is_date'] ) ) {
-			if ( self::archive_rule_enabled( 'noindex_date' ) ) {
+			if ( self::archive_rule_enabled( 'date' ) ) {
+				$noindex = true;
+			}
+		} elseif ( ! empty( $context['is_search'] ) ) {
+			if ( self::archive_rule_enabled( 'search' ) ) {
 				$noindex = true;
 			}
 		}
 		// 'is_home': sin reglas propias -- la home nunca lleva noindex por
-		// el módulo 18.
+		// este módulo.
 
 		// La paginación aplica por encima de lo anterior, en cualquier
 		// contexto (incluye singulares con <!--nextpage-->, no solo
 		// archivos) -- mismo comportamiento que tenía
 		// Cmdroom_Meta_Output::resolve_current() antes de 0.11.0.
-		if ( self::archive_rule_enabled( 'noindex_paginated' ) && self::is_paginated_request() ) {
+		if ( self::archive_rule_enabled( 'paged' ) && self::is_paginated_request() ) {
 			$noindex = true;
 		}
 

@@ -1,0 +1,212 @@
+/*
+ * Command Room — pantalla "Configuración" (Archivos y taxonomías +
+ * Breadcrumbs + Auto-Image SEO + Herramientas, antes cuatro pantallas
+ * sueltas). Carga junto a meta-editor.css y servidor-editor.css (de ahí
+ * salen los tokens --cmdroom-* y las clases .cr-card/.cr-tabs/.cr-toggle/
+ * .cr-chip/.cr-input/.cr-label genéricas) -- añade solo lo propio de esta
+ * pantalla.
+ */
+
+.cmdroom-config-wrap .cmdroom-md-container {
+	max-width: 900px;
+}
+
+/* — Patrón "fila de regla", reutilizado en Archivos/Breadcrumbs/Auto-Image — */
+
+.cmdroom-config-rule-list {
+	margin-bottom: 12px;
+}
+
+.cmdroom-config-rule-row {
+	display: flex;
+	gap: 16px;
+	align-items: flex-start;
+	padding: 14px 16px;
+	border-bottom: 1px solid var(--cmdroom-divider);
+}
+
+.cmdroom-config-rule-row:last-child {
+	border-bottom: none;
+}
+
+.cmdroom-config-rule-body {
+	flex: 1;
+	min-width: 0;
+}
+
+.cmdroom-config-rule-title {
+	font-weight: 600;
+	font-size: 13.5px;
+	margin: 0 0 3px;
+}
+
+.cmdroom-config-rule-desc {
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--cmdroom-text-muted);
+	margin: 0;
+}
+
+.cmdroom-config-rule-chip {
+	flex: none;
+	margin-top: 2px;
+}
+
+.cmdroom-config-note {
+	font-size: 12.5px;
+	line-height: 1.55;
+	color: var(--cmdroom-text-muted);
+	margin-top: 10px;
+}
+
+.cmdroom-config-extra {
+	margin-top: 40px;
+	padding-top: 16px;
+	border-top: 2px solid var(--cmdroom-divider);
+}
+
+.cmdroom-config-extra h3 {
+	font-weight: 600;
+	font-size: 11.5px;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+	color: var(--cmdroom-accent-dark);
+	margin: 0 0 8px;
+}
+
+/* — Campos en grid (Breadcrumbs, Auto-Image) — */
+
+.cmdroom-config-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 16px;
+	margin-bottom: 20px;
+}
+
+/* — Breadcrumbs: vista previa — */
+
+.cmdroom-config-crumbs-preview {
+	padding: 14px 16px;
+	margin-bottom: 20px;
+	font-weight: 600;
+	font-size: 13.5px;
+	color: var(--cmdroom-accent-dark);
+}
+
+/* — Auto-Image: variables + vista previa — */
+
+.cmdroom-config-vars {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	font-size: 12.5px;
+	color: var(--cmdroom-text-muted);
+	margin: 0 0 20px;
+}
+
+.cmdroom-config-vars .cr-chip {
+	cursor: pointer;
+	background: none;
+}
+
+.cmdroom-config-vars .cr-chip:hover {
+	background: var(--cmdroom-neutral-100);
+}
+
+.cmdroom-config-imgseo-preview {
+	padding: 12px 16px;
+	margin-bottom: 20px;
+	font-family: ui-monospace, Menlo, monospace;
+	font-size: 12.5px;
+	overflow-x: auto;
+	white-space: nowrap;
+}
+
+/* — Herramientas — */
+
+.cmdroom-config-tools-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+	gap: 16px;
+}
+
+.cmdroom-config-tools-card {
+	padding: 18px;
+}
+
+.cmdroom-config-tools-title {
+	font-family: var(--font-heading, inherit);
+	font-weight: 700;
+	font-size: 16px;
+	margin: 0 0 6px;
+}
+
+.cmdroom-config-tools-text {
+	font-size: 13px;
+	line-height: 1.55;
+	color: var(--cmdroom-text-muted);
+	margin: 0 0 14px;
+}
+
+.cmdroom-config-tools-checks {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 18px;
+	margin-bottom: 16px;
+	font-size: 13px;
+}
+
+.cmdroom-config-tools-action-row {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	flex-wrap: wrap;
+}
+
+.cmdroom-config-tools-status {
+	font-size: 13px;
+	color: var(--cmdroom-text-muted);
+}
+
+.cmdroom-config-tools-preview-row {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 14px;
+}
+
+.cmdroom-config-tools-preview-row .cr-input {
+	min-width: 0;
+	flex: 1;
+}
+
+.cmdroom-config-tools-preview-row .cr-btn-secondary {
+	white-space: nowrap;
+}
+
+.cmdroom-config-tools-result {
+	background: #1c1c1c;
+	color: #e5e5e5;
+	font-family: ui-monospace, Menlo, monospace;
+	font-size: 12.5px;
+	line-height: 1.6;
+	padding: 14px 16px;
+	overflow-x: auto;
+	white-space: pre;
+	margin: 0;
+}
+
+.cmdroom-config-tools-notfound {
+	color: var(--cmdroom-accent-dark);
+	font-size: 13px;
+}
+
+@media (max-width: 600px) {
+	.cmdroom-config-rule-row {
+		flex-wrap: wrap;
+	}
+	.cmdroom-config-rule-chip {
+		order: 3;
+		margin-left: 54px;
+	}
+}

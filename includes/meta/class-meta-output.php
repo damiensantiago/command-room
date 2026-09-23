@@ -135,7 +135,17 @@ class Cmdroom_Meta_Output {
 		}
 
 		if ( is_date() ) {
-			return self::resolve_for_generic_archive();
+			return self::resolve_for_generic_archive( array( 'is_date' => true ) );
+		}
+
+		// Hasta el rediseño "Configuración" (2026-09-23) is_search() caía
+		// aquí sin plantilla ni robots propios -- con "Salida en el sitio"
+		// activado, maybe_unhook_native_tags() ya había quitado el <title>
+		// nativo y esta función devolvía null, así que la página de
+		// resultados se quedaba sin <title> en absoluto. Usa el mismo
+		// fallback mínimo que los archivos de fecha.
+		if ( is_search() ) {
+			return self::resolve_for_generic_archive( array( 'is_search' => true ) );
 		}
 
 		return null;
@@ -148,11 +158,17 @@ class Cmdroom_Meta_Output {
 	 * robots sigue calculándose con la misma regla centralizada del módulo
 	 * 18 (noindex_date) por si algún día se decide darle plantilla propia.
 	 */
-	private static function resolve_for_generic_archive() {
-		$title = wp_strip_all_tags( get_the_archive_title() );
-		global $wp;
-		$canonical = home_url( add_query_arg( array(), $wp->request ) );
-		$robots    = Cmdroom_Meta_Resolver::resolve_robots_for_context( array( 'is_date' => true ) );
+	private static function resolve_for_generic_archive( $context = array() ) {
+		if ( ! empty( $context['is_search'] ) ) {
+			/* translators: %s: search query */
+			$title     = sprintf( __( 'Resultados de búsqueda para: %s', 'command-room' ), get_search_query() );
+			$canonical = home_url( '/?s=' . urlencode( get_search_query() ) );
+		} else {
+			$title = wp_strip_all_tags( get_the_archive_title() );
+			global $wp;
+			$canonical = home_url( add_query_arg( array(), $wp->request ) );
+		}
+		$robots = Cmdroom_Meta_Resolver::resolve_robots_for_context( $context );
 
 		return array(
 			'title'       => $title,

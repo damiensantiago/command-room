@@ -31,6 +31,13 @@ class Cmdroom_Admin_Menu {
 	 */
 	const MERGED_SERVER_SLUGS = array( 'redirects', 'monitor404', 'cleanup' );
 
+	/**
+	 * Igual que MERGED_SERVER_SLUGS pero para el rediseño "Configuración"
+	 * (2026-09-23): "Archivos y taxonomías", "Breadcrumbs", "Auto-Image SEO"
+	 * y "Herramientas" pasan a ser sus pestañas.
+	 */
+	const MERGED_CONFIG_SLUGS = array( 'archives', 'breadcrumbs', 'image-seo', 'tools' );
+
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'register_menu' ) );
 		add_action( 'admin_post_cmdroom_save_menu_visibility', array( __CLASS__, 'handle_save_menu_visibility' ) );
@@ -72,10 +79,10 @@ class Cmdroom_Admin_Menu {
 		$visibility = self::get_menu_visibility();
 
 		foreach ( self::get_submenus() as $slug => $label ) {
-			// Ya no tienen página propia -- absorbidos por "servidor" (ver
-			// más abajo). Siguen en get_submenus() solo para la tabla de
-			// módulos de General.
-			if ( in_array( $slug, self::MERGED_SERVER_SLUGS, true ) ) {
+			// Ya no tienen página propia -- absorbidos por "servidor" o
+			// "config" (ver más abajo). Siguen en get_submenus() solo para
+			// la tabla de módulos de General.
+			if ( in_array( $slug, self::MERGED_SERVER_SLUGS, true ) || in_array( $slug, self::MERGED_CONFIG_SLUGS, true ) ) {
 				continue;
 			}
 
@@ -97,6 +104,9 @@ class Cmdroom_Admin_Menu {
 				$parent_slug = null;
 			}
 			if ( 'servidor' === $slug && ! self::any_server_module_visible( $visibility ) ) {
+				$parent_slug = null;
+			}
+			if ( 'config' === $slug && ! self::any_config_module_visible( $visibility ) ) {
 				$parent_slug = null;
 			}
 
@@ -125,10 +135,34 @@ class Cmdroom_Admin_Menu {
 				}
 			);
 		}
+
+		// Igual para los slugs antiguos de Archivos/Breadcrumbs/Auto-Image/
+		// Herramientas -- redirigen a su pestaña en "Configuración".
+		foreach ( Cmdroom_Config_Admin::LEGACY_REDIRECTS as $old_slug => $tab ) {
+			add_submenu_page(
+				null,
+				$old_slug,
+				$old_slug,
+				self::CAPABILITY,
+				$old_slug,
+				function () use ( $old_slug ) {
+					Cmdroom_Config_Admin::render_legacy_redirect( $old_slug );
+				}
+			);
+		}
 	}
 
 	private static function any_server_module_visible( $visibility ) {
 		foreach ( self::MERGED_SERVER_SLUGS as $slug ) {
+			if ( ! empty( $visibility[ $slug ] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static function any_config_module_visible( $visibility ) {
+		foreach ( self::MERGED_CONFIG_SLUGS as $slug ) {
 			if ( ! empty( $visibility[ $slug ] ) ) {
 				return true;
 			}
@@ -146,8 +180,6 @@ class Cmdroom_Admin_Menu {
 			'metas'        => __( 'Metas', 'command-room' ),
 			'variables'    => __( 'Variables', 'command-room' ),
 			'schema'       => __( 'Datos estructurados', 'command-room' ),
-			'archives'     => __( 'Archivos y taxonomías', 'command-room' ),
-			'breadcrumbs'  => __( 'Breadcrumbs', 'command-room' ),
 			'sitemaps'     => __( 'Sitemaps', 'command-room' ),
 			'robots'       => __( 'Robots.txt', 'command-room' ),
 			'servidor'     => __( 'Servidor', 'command-room' ),
@@ -155,8 +187,11 @@ class Cmdroom_Admin_Menu {
 			'monitor404'   => __( 'Servidor → Monitor 404', 'command-room' ),
 			'cleanup'      => __( 'Servidor → Limpieza HTTP/permalinks', 'command-room' ),
 			'code'         => __( 'Inyección de código', 'command-room' ),
-			'image-seo'    => __( 'Auto-Image SEO', 'command-room' ),
-			'tools'        => __( 'Herramientas', 'command-room' ),
+			'config'       => __( 'Configuración', 'command-room' ),
+			'archives'     => __( 'Configuración → Archivos y taxonomías', 'command-room' ),
+			'breadcrumbs'  => __( 'Configuración → Breadcrumbs', 'command-room' ),
+			'image-seo'    => __( 'Configuración → Auto-Image SEO', 'command-room' ),
+			'tools'        => __( 'Configuración → Herramientas', 'command-room' ),
 		);
 	}
 
@@ -251,13 +286,16 @@ class Cmdroom_Admin_Menu {
 							if ( 'general' === $slug ) {
 								continue;
 							}
-							// Las tres pestañas de "Servidor" ya no tienen
-							// página propia -- enlazan a su pestaña dentro de
-							// cmdroom-servidor en vez de a un page_slug que
-							// ya no existe.
+							// Las pestañas de "Servidor"/"Configuración" ya no
+							// tienen página propia -- enlazan a su pestaña
+							// dentro de cmdroom-servidor/cmdroom-config en
+							// vez de a un page_slug que ya no existe.
 							if ( in_array( $slug, self::MERGED_SERVER_SLUGS, true ) ) {
 								$tab_map = array( 'redirects' => 'redirects', 'monitor404' => '404', 'cleanup' => 'clean' );
 								$url     = Cmdroom_Server_Admin::tab_url( $tab_map[ $slug ] );
+							} elseif ( in_array( $slug, self::MERGED_CONFIG_SLUGS, true ) ) {
+								$tab_map = array( 'archives' => 'archivos', 'breadcrumbs' => 'breadcrumbs', 'image-seo' => 'autoimage', 'tools' => 'tools' );
+								$url     = Cmdroom_Config_Admin::tab_url( $tab_map[ $slug ] );
 							} else {
 								$page_slug = self::SLUG . '-' . $slug;
 								$url       = admin_url( 'admin.php?page=' . $page_slug );
@@ -361,14 +399,6 @@ class Cmdroom_Admin_Menu {
 		Cmdroom_Schema_Settings::render_page();
 	}
 
-	public static function render_archives() {
-		Cmdroom_Archive_Optimization_Settings::render_page();
-	}
-
-	public static function render_breadcrumbs() {
-		Cmdroom_Breadcrumb_Settings::render_page();
-	}
-
 	public static function render_sitemaps() {
 		Cmdroom_Sitemap_Settings::render_page();
 	}
@@ -385,150 +415,8 @@ class Cmdroom_Admin_Menu {
 		Cmdroom_Code_Injection::render_page();
 	}
 
-	public static function render_image_seo() {
-		Cmdroom_Image_Seo_Settings::render_page();
+	public static function render_config() {
+		Cmdroom_Config_Admin::render_page();
 	}
 
-	public static function render_tools() {
-		?>
-		<div class="wrap cmdroom-wrap">
-			<h1><?php esc_html_e( 'Herramientas', 'command-room' ); ?></h1>
-
-			<h2><?php esc_html_e( 'Importar desde Rank Math', 'command-room' ); ?></h2>
-			<?php if ( isset( $_GET['cmdroom_imported'] ) ) : ?>
-				<?php $report = get_transient( 'cmdroom_import_report' ); ?>
-				<div class="notice notice-success">
-					<?php if ( $report ) : ?>
-						<p>
-							<?php
-							printf(
-								/* translators: 1: posts imported, 2: posts skipped, 3: posts found */
-								esc_html__( 'Metas importadas en %1$d posts (omitidos %2$d que ya tenían override propio, de %3$d encontrados con datos de Rank Math).', 'command-room' ),
-								(int) $report['posts']['imported'],
-								(int) $report['posts']['skipped'],
-								(int) $report['posts']['total_encontrados']
-							);
-							?>
-						</p>
-						<?php if ( ! empty( $report['templates']['imported'] ) ) : ?>
-							<p><?php esc_html_e( 'Plantillas globales importadas:', 'command-room' ); ?> <?php echo esc_html( implode( ', ', $report['templates']['campos'] ) ); ?></p>
-						<?php else : ?>
-							<p><?php esc_html_e( 'No se encontraron plantillas globales de Rank Math que importar.', 'command-room' ); ?></p>
-						<?php endif; ?>
-					<?php else : ?>
-						<p><?php esc_html_e( 'Importación completada.', 'command-room' ); ?></p>
-					<?php endif; ?>
-				</div>
-			<?php endif; ?>
-
-			<p><?php esc_html_e( 'Copia las plantillas globales y las metas por post (título, descripción, canonical, robots) desde Rank Math. No modifica ni borra nada de Rank Math, y no sobrescribe posts que ya tengan un override propio en Command Room.', 'command-room' ); ?></p>
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<?php wp_nonce_field( 'cmdroom_import_rankmath' ); ?>
-				<input type="hidden" name="action" value="cmdroom_import_rankmath" />
-				<?php submit_button( __( 'Importar desde Rank Math', 'command-room' ), 'primary', 'submit', false ); ?>
-			</form>
-
-			<hr />
-
-			<h2><?php esc_html_e( 'Importar redirecciones desde Rank Math', 'command-room' ); ?></h2>
-			<?php if ( isset( $_GET['cmdroom_imported_redirects'] ) ) : ?>
-				<?php $rr = get_transient( 'cmdroom_import_redirects_report' ); ?>
-				<div class="notice notice-success">
-					<?php if ( $rr ) : ?>
-						<p>
-							<?php
-							printf(
-								/* translators: %d: número de redirecciones importadas */
-								esc_html__( '%d redirecciones importadas.', 'command-room' ),
-								(int) $rr['imported']
-							);
-							?>
-						</p>
-						<?php if ( ! empty( $rr['omitted'] ) ) : ?>
-							<p><?php esc_html_e( 'Omitidas (comparación no soportada, revisar a mano en Rank Math):', 'command-room' ); ?> <?php echo esc_html( implode( ', ', $rr['omitted'] ) ); ?></p>
-						<?php endif; ?>
-						<p><strong><?php esc_html_e( 'Revísalas en SEO → Redirecciones antes de activar la salida en el sitio', 'command-room' ); ?></strong> — <?php esc_html_e( 'por ejemplo la regla de "ecografia", que ya está marcada como pendiente de borrar en Rank Math.', 'command-room' ); ?></p>
-					<?php else : ?>
-						<p><?php esc_html_e( 'Importación completada.', 'command-room' ); ?></p>
-					<?php endif; ?>
-				</div>
-			<?php endif; ?>
-			<p><?php esc_html_e( 'Copia las reglas activas del gestor de redirecciones de Rank Math a la tabla propia de Command Room. No borra ni modifica nada en Rank Math.', 'command-room' ); ?></p>
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<?php wp_nonce_field( 'cmdroom_import_rankmath_redirects' ); ?>
-				<input type="hidden" name="action" value="cmdroom_import_rankmath_redirects" />
-				<?php submit_button( __( 'Importar redirecciones', 'command-room' ), 'primary', 'submit', false ); ?>
-			</form>
-
-			<hr />
-
-			<h2><?php esc_html_e( 'Vista previa de metas', 'command-room' ); ?></h2>
-			<p><?php esc_html_e( 'Calcula lo que imprimiría Command Room para un post, sin activar la salida en el sitio. Útil para comparar contra lo que sirve Rank Math ahora mismo.', 'command-room' ); ?></p>
-			<form method="get">
-				<input type="hidden" name="page" value="cmdroom-tools" />
-				<label for="cmdroom_preview_id"><?php esc_html_e( 'ID de post', 'command-room' ); ?></label>
-				<input type="number" id="cmdroom_preview_id" name="cmdroom_preview_id" value="<?php echo isset( $_GET['cmdroom_preview_id'] ) ? esc_attr( absint( $_GET['cmdroom_preview_id'] ) ) : ''; ?>" />
-				<?php submit_button( __( 'Ver vista previa', 'command-room' ), 'secondary', '', false ); ?>
-			</form>
-
-			<?php if ( ! empty( $_GET['cmdroom_preview_id'] ) ) : ?>
-				<?php $data = Cmdroom_Meta_Resolver::resolve_for_post( absint( $_GET['cmdroom_preview_id'] ) ); ?>
-				<?php if ( $data ) : ?>
-					<table class="widefat" style="max-width:800px;margin-top:1em;">
-						<tbody>
-							<tr><th><?php esc_html_e( 'Canonical', 'command-room' ); ?></th><td><?php echo esc_html( $data['canonical'] ); ?></td></tr>
-							<tr><th><?php esc_html_e( 'Robots', 'command-room' ); ?></th><td><?php echo esc_html( ( $data['noindex'] ? 'noindex' : 'index' ) . ', ' . ( $data['nofollow'] ? 'nofollow' : 'follow' ) ); ?></td></tr>
-							<tr><th><?php esc_html_e( 'og:image', 'command-room' ); ?></th><td><?php echo esc_html( $data['og_image'] ? $data['og_image'] : '—' ); ?></td></tr>
-						</tbody>
-					</table>
-					<p style="margin-top:1em;"><strong><?php esc_html_e( 'Bloque <head>', 'command-room' ); ?></strong></p>
-					<pre style="max-width:800px;max-height:250px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;"><?php echo esc_html( $data['head_html'] ); ?></pre>
-					<?php Cmdroom_Schema_Builder::$last_error = ''; ?>
-					<?php $schema = Cmdroom_Schema_Builder::build_for_post( absint( $_GET['cmdroom_preview_id'] ) ); ?>
-					<p style="margin-top:1em;"><strong><?php esc_html_e( 'Datos estructurados (@graph)', 'command-room' ); ?></strong></p>
-					<?php if ( Cmdroom_Schema_Builder::$last_error ) : ?>
-						<div class="notice notice-error inline"><p><?php echo esc_html( Cmdroom_Schema_Builder::$last_error ); ?></p></div>
-					<?php endif; ?>
-					<?php if ( $schema ) : ?>
-						<pre style="max-width:800px;max-height:400px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;"><?php echo esc_html( wp_json_encode( $schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) ); ?></pre>
-					<?php else : ?>
-						<p><?php esc_html_e( 'Este tipo de contenido tiene el schema desactivado en Ajustes → Datos estructurados.', 'command-room' ); ?></p>
-					<?php endif; ?>
-				<?php else : ?>
-					<p><?php esc_html_e( 'No se encontró ese post.', 'command-room' ); ?></p>
-				<?php endif; ?>
-			<?php endif; ?>
-
-			<form method="get" style="margin-top:1.5em;">
-				<input type="hidden" name="page" value="cmdroom-tools" />
-				<label for="cmdroom_preview_term"><?php esc_html_e( 'ID de término (categoría/etiqueta)', 'command-room' ); ?></label>
-				<input type="number" id="cmdroom_preview_term" name="cmdroom_preview_term" value="<?php echo isset( $_GET['cmdroom_preview_term'] ) ? esc_attr( absint( $_GET['cmdroom_preview_term'] ) ) : ''; ?>" />
-				<?php submit_button( __( 'Ver vista previa', 'command-room' ), 'secondary', '', false ); ?>
-			</form>
-
-			<?php if ( ! empty( $_GET['cmdroom_preview_term'] ) ) : ?>
-				<?php $term = get_term( absint( $_GET['cmdroom_preview_term'] ) ); ?>
-				<?php $data = ( $term && ! is_wp_error( $term ) ) ? Cmdroom_Meta_Resolver::resolve_for_term( $term ) : null; ?>
-				<?php if ( $data ) : ?>
-					<table class="widefat" style="max-width:800px;margin-top:1em;">
-						<tbody>
-							<tr><th><?php esc_html_e( 'Canonical', 'command-room' ); ?></th><td><?php echo esc_html( $data['canonical'] ); ?></td></tr>
-						</tbody>
-					</table>
-					<p style="margin-top:1em;"><strong><?php esc_html_e( 'Bloque <head>', 'command-room' ); ?></strong></p>
-					<pre style="max-width:800px;max-height:250px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;"><?php echo esc_html( $data['head_html'] ); ?></pre>
-					<?php Cmdroom_Schema_Builder::$last_error = ''; ?>
-					<?php $schema = Cmdroom_Schema_Builder::build_for_term( $term ); ?>
-					<p style="margin-top:1em;"><strong><?php esc_html_e( 'Datos estructurados (@graph)', 'command-room' ); ?></strong></p>
-					<?php if ( Cmdroom_Schema_Builder::$last_error ) : ?>
-						<div class="notice notice-error inline"><p><?php echo esc_html( Cmdroom_Schema_Builder::$last_error ); ?></p></div>
-					<?php endif; ?>
-					<pre style="max-width:800px;max-height:400px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;"><?php echo esc_html( wp_json_encode( $schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) ); ?></pre>
-				<?php else : ?>
-					<p><?php esc_html_e( 'No se encontró ese término.', 'command-room' ); ?></p>
-				<?php endif; ?>
-			<?php endif; ?>
-		</div>
-		<?php
-	}
 }
