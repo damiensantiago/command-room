@@ -63,9 +63,9 @@ class Cmdroom_Admin_Menu {
 
 		foreach ( self::get_submenus() as $slug => $label ) {
 			$page_slug = 'general' === $slug ? self::SLUG : self::SLUG . '-' . $slug;
-			// Los slugs con guion (ai-bots, image-seo) no pueden ser sufijo
-			// de un nombre de método PHP: se traducen a guion bajo solo
-			// para resolver el callback, la URL de admin sigue con guion.
+			// Los slugs con guion (image-seo) no pueden ser sufijo de un
+			// nombre de método PHP: se traducen a guion bajo solo para
+			// resolver el callback, la URL de admin sigue con guion.
 			$method_slug = str_replace( '-', '_', $slug );
 
 			// "general" es siempre el punto de entrada del plugin — siempre
@@ -106,7 +106,6 @@ class Cmdroom_Admin_Menu {
 			'redirects'    => __( 'Redirecciones', 'command-room' ),
 			'monitor404'   => __( 'Monitor 404', 'command-room' ),
 			'robots'       => __( 'Robots.txt', 'command-room' ),
-			'ai-bots'      => __( 'Bots de IA', 'command-room' ),
 			'code'         => __( 'Inyección de código', 'command-room' ),
 			'image-seo'    => __( 'Auto-Image SEO', 'command-room' ),
 			'cleanup'      => __( 'Limpieza HTTP/permalinks', 'command-room' ),
@@ -128,8 +127,7 @@ class Cmdroom_Admin_Menu {
 			'sitemaps'    => __( 'Generación y ajustes de los sitemaps XML del sitio.', 'command-room' ),
 			'redirects'   => __( 'Gestor de reglas de redirección 301/302.', 'command-room' ),
 			'monitor404'  => __( 'Registro de URLs que devuelven 404 en el sitio, para detectar enlaces rotos.', 'command-room' ),
-			'robots'      => __( 'Editor del contenido de robots.txt.', 'command-room' ),
-			'ai-bots'     => __( 'Control de acceso de bots de IA (GPTBot, ClaudeBot, etc.) al sitio.', 'command-room' ),
+			'robots'      => __( 'Editor del contenido de robots.txt y control de acceso de bots de IA (GPTBot, ClaudeBot, etc.).', 'command-room' ),
 			'code'        => __( 'Inyección de fragmentos de código (head/body/footer) sin tocar el tema.', 'command-room' ),
 			'image-seo'   => __( 'Generación automática de atributos alt/title de imágenes.', 'command-room' ),
 			'cleanup'     => __( 'Limpieza de cabeceras HTTP innecesarias y ajustes de permalinks.', 'command-room' ),
@@ -324,10 +322,6 @@ class Cmdroom_Admin_Menu {
 
 	public static function render_monitor404() {
 		Cmdroom_404_Admin::render_page();
-	}
-
-	public static function render_ai_bots() {
-		Cmdroom_Ai_Bots_Settings::render_page();
 	}
 
 	public static function render_code() {
