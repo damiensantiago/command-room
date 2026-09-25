@@ -14,7 +14,7 @@ Este documento tiene dos partes: una **guía de uso** pantalla por pantalla (par
 
 1. [Qué resuelve y por qué existe](#qué-resuelve-y-por-qué-existe)
 2. [Instalación](#instalación)
-3. [El concepto clave: coexistencia segura con Rank Math / Yoast](#el-concepto-clave-coexistencia-segura-con-rank-math--yoast)
+3. [El concepto clave: de la IA de pago dentro del plugin, a un plugin gratuito conectado con tu agente de IA](#el-concepto-clave-de-la-ia-de-pago-dentro-del-plugin-a-un-plugin-gratuito-conectado-con-tu-agente-de-ia)
 4. [Guía de uso — pantalla por pantalla](#guía-de-uso--pantalla-por-pantalla)
 5. [Arquitectura (para desarrolladores)](#arquitectura-para-desarrolladores)
 6. [Estado del proyecto y limitaciones conocidas](#estado-del-proyecto-y-limitaciones-conocidas)
@@ -23,7 +23,9 @@ Este documento tiene dos partes: una **guía de uso** pantalla por pantalla (par
 
 ## Qué resuelve y por qué existe
 
-Command Room nace para centralizar en un solo plugin, propio y auditable, todo lo que normalmente reparten Rank Math, Yoast SEO, un plugin de redirecciones, uno de bots de IA y varios snippets sueltos de functions.php. La idea de fondo es que **nada se activa de golpe**: cada módulo que toca el HTML del sitio (Metas, Datos estructurados, Sitemaps, Redirecciones) tiene su propio interruptor de "salida en el sitio", apagado por defecto, para poder configurar y comparar con calma antes de que sustituya a lo que ya tenías funcionando.
+Command Room resuelve, sobre todo, un problema de **conexión entre el SEO y las herramientas de IA**. El plugin está construido para que cualquier agente de IA de programación (Claude Code, Cursor, Copilot o el que uses) pueda leerlo y modificarlo directamente: cada plantilla de metas es un único bloque de HTML editable, cada bloque de schema es JSON plano, cada ajuste vive en una opción con nombre claro, y cada módulo sigue el mismo patrón de dos piezas (una que guarda, otra que imprime). Ese código limpio y predecible es lo que permite mantener siempre el control real sobre lo que se imprime en el sitio, aunque la interfaz de administración esté deliberadamente simplificada frente a Rank Math o Yoast — a pesar de tener bastantes más opciones en abierto y gratis (bots de IA, Core Web Vitals vía CrUX, componentes de front-end, importadores, etc.).
+
+Esa simplicidad no es una limitación: es lo que hace que el plugin sea **fiable** y **flexible** de verdad. Al no depender de decenas de pantallas ni de una estructura de datos opaca, puedes cederle a tu agente de programación tareas como "añade esta meta", "crea este bloque de JSON-LD" o "monta un módulo nuevo" sin miedo a que rompa algo en tu web — el propio diseño del plugin (opciones simples, un patrón repetido en todos los módulos, sin lógica escondida) está pensado para que ese trabajo sea seguro. Con instalar el plugin y darle a tu agente unas pocas indicaciones concretas, la optimización de un sitio pasa de ser sesiones enteras de configuración manual a cuestión de minutos.
 
 ## Instalación
 
@@ -34,14 +36,19 @@ Command Room nace para centralizar en un solo plugin, propio y auditable, todo l
 5. Activa **"Salida en el sitio"** módulo a módulo (dentro de **Configuración → Herramientas**) solo cuando hayas verificado cada uno con su vista previa.
 6. Antes de dar el salto real, apaga Rank Math/Yoast — ver la siguiente sección, es el paso que más problemas evita.
 
-## El concepto clave: coexistencia segura con Rank Math / Yoast
+## El concepto clave: de la IA de pago dentro del plugin, a un plugin gratuito conectado con tu agente de IA
 
-Casi todos los módulos de salida (Metas, Datos estructurados, Sitemaps, Redirecciones) tienen su propio checkbox **"Salida en el sitio"**, guardado de forma independiente. Mientras esté apagado, Command Room calcula y previsualiza, pero **no imprime nada real** en el sitio — el plugin de SEO que ya tuvieras (Rank Math, Yoast) sigue sirviendo en vivo exactamente como antes, sin ningún riesgo de duplicar etiquetas.
+Rank Math, Yoast y la mayoría de plugins de SEO grandes han empezado a vender su propia capa de IA como función de pago: generación de metas, sugerencias de contenido, "asistentes" varios, casi siempre por créditos o suscripción, y siempre como una caja cerrada — no ves ni puedes tocar cómo decide lo que decide. Command Room parte de la idea contraria: en vez de meter un asistente de IA de pago **dentro** del plugin, el plugin entero está diseñado para que **cualquier agente de IA que ya uses para programar** pueda leerlo, entenderlo y modificarlo directamente. Gratis, sin marketplace de créditos, sin caja negra.
 
-El peligro aparece cuando activas esa salida real **sin haber desactivado el otro plugin de SEO todavía**: ambos imprimen su propio `<title>`, `<meta description>` y `<link rel="canonical">` en la misma página — HTML inválido y una señal confusa para los buscadores. Para que esto no pase por descuido, **Configuración → Herramientas → "Salida en el sitio"** muestra siempre, arriba del todo, una tarjeta de estado:
+Esto cambia quién resuelve tus necesidades de SEO. No es una función empaquetada, limitada a lo que el fabricante del plugin decidió ofrecer este trimestre: es tu propio agente, con contexto completo de tu sitio, escribiendo exactamente el meta, el bloque de schema o el módulo que necesitas, sobre una base de código pensada específicamente para que eso sea seguro. Es la diferencia entre pagar por una IA genérica metida dentro de un SaaS ajeno, y tener un plugin gratuito que es, en sí mismo, terreno fácil de trabajar para la IA que ya tienes corriendo en tu editor o tu terminal.
 
-- Si Rank Math y Yoast están inactivos: aviso neutro, sin riesgo.
-- Si alguno sigue activo: tarjeta de aviso en rojo + botón **"Desactivar Rank Math"** / **"Desactivar Yoast SEO"** que lo apaga con un clic (con confirmación), sin salir del admin ni tocar SSH/WP-CLI.
+En la práctica, esto significa que Command Room está pensado para **sustituir** a Rank Math/Yoast, no para convivir con ellos indefinidamente. El camino de migración es:
+
+1. Instala Command Room y usa el importador (**Configuración → Herramientas**) para traer tus metas, plantillas y redirecciones desde Rank Math o Yoast sin perder nada.
+2. Ajusta lo que haga falta — a mano o pidiéndoselo a tu agente de IA — con la salida real todavía apagada, comparando en paralelo contra lo que ya tenías.
+3. Cuando todo cuadre, activa la salida real y desactiva el otro plugin de SEO.
+
+Ese último paso es el único punto delicado de la migración: si activas la salida real de Command Room **sin haber desactivado antes** el otro plugin, ambos imprimen su propio `<title>`, `<meta description>` y `<link rel="canonical">` en la misma página — HTML inválido y una señal confusa para los buscadores. Para que eso no pase por descuido, **Configuración → Herramientas → "Salida en el sitio"** muestra siempre, arriba del todo, una tarjeta de estado: si Rank Math o Yoast siguen activos, aparece un aviso con un botón **"Desactivar Rank Math"** / **"Desactivar Yoast SEO"** que los apaga con un clic (con confirmación), sin salir del admin ni tocar SSH/WP-CLI — el último empujón para completar la sustitución sin dejar HTML duplicado por el camino.
 
 Los módulos que no dependen de un plugin de SEO de terceros para lo mismo (Robots.txt, Servidor/Limpieza, Componentes, Código, Auto-Image SEO, Breadcrumbs) no tienen este interruptor — se aplican en cuanto guardas, porque no hay un "otro plugin" con el que puedan chocar de la misma forma.
 
