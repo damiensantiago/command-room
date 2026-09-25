@@ -40,6 +40,51 @@
 		return 'blk-' + Date.now().toString( 36 ) + '-' + Math.random().toString( 36 ).slice( 2 );
 	}
 
+	/**
+	 * Lee el texto plano real de un editor contenteditable reconstruyendo
+	 * los saltos de línea a mano -- .textContent NO basta: cuando el
+	 * navegador decide envolver una línea en su propio <div>/<p> en vez de
+	 * pasar por nuestro execCommand('insertText', '\n') del keydown de
+	 * Enter (p. ej. al editar/pegar dentro de una línea ya existente),
+	 * .textContent concatena esos bloques sin ningún separador y el JSON
+	 * entero acaba guardándose como una sola fila -- mismo bug reportado por
+	 * Damien el 2026-09-24 en Metas, también presente aquí (misma técnica de
+	 * editor). Ver meta-editor.js, extractText().
+	 */
+	function extractText( el ) {
+		var lines   = [];
+		var current = '';
+
+		function walk( node ) {
+			if ( node.nodeType === Node.TEXT_NODE ) {
+				current += node.nodeValue;
+				return;
+			}
+			if ( node.nodeType !== Node.ELEMENT_NODE ) {
+				return;
+			}
+			if ( 'BR' === node.nodeName ) {
+				lines.push( current );
+				current = '';
+				return;
+			}
+			var isBlock = 'DIV' === node.nodeName || 'P' === node.nodeName;
+			if ( isBlock && ( lines.length || current ) ) {
+				lines.push( current );
+				current = '';
+			}
+			node.childNodes.forEach( walk );
+			if ( isBlock ) {
+				lines.push( current );
+				current = '';
+			}
+		}
+
+		el.childNodes.forEach( walk );
+		lines.push( current );
+		return lines.join( '\n' );
+	}
+
 	function getCaretOffset( el ) {
 		var sel = window.getSelection();
 		if ( ! sel || sel.rangeCount === 0 ) {
@@ -106,6 +151,13 @@
 		var activeTab  = groupKeys[ 0 ] || 'general';
 		var activeById = {}; // group -> selected block id
 		var menuOpen   = false;
+
+		// Librería (2026-09-24): libraryOverrides solo guarda los tipos
+		// tocados en esta sesión de edición (nuevos o con descripción/JSON
+		// cambiados) -- es lo único que se manda al servidor en
+		// library_state, nunca los 21 tipos de fábrica enteros.
+		var libraryOverrides   = {};
+		var editingLibraryType = null;
 
 		groupKeys.forEach( function ( g ) {
 			state[ g ] = Array.isArray( state[ g ] ) ? state[ g ] : [];
@@ -321,7 +373,7 @@
 
 			code.addEventListener( 'input', function () {
 				var offset = getCaretOffset( code );
-				var raw    = code.textContent;
+				var raw    = extractText( code );
 				code.innerHTML = highlightJson( raw );
 				setCaretOffset( code, offset );
 				block.json = raw;
@@ -347,16 +399,100 @@
 			return wrap;
 		}
 
+		/**
+		 * Terminal de edición de JSON reutilizado para la Librería -- mismo
+		 * look que renderTerminal() (chips), pero sin atarlo a un
+		 * group/block de un tipo de página: aquí edita directamente
+		 * library[type].json.
+		 */
+		function renderLibraryCodeEditor( entry ) {
+			var terminal = document.createElement( 'div' );
+			terminal.className = 'cmdroom-md-terminal';
+
+			var bar = document.createElement( 'div' );
+			bar.className = 'cmdroom-md-terminal-bar';
+			[ 'red', 'amber', 'green' ].forEach( function ( color ) {
+				var dot = document.createElement( 'span' );
+				dot.className = 'cmdroom-md-dot cmdroom-md-dot-' + color;
+				bar.appendChild( dot );
+			} );
+			terminal.appendChild( bar );
+
+			var body = document.createElement( 'div' );
+			body.className = 'cmdroom-md-terminal-body';
+
+			var code = document.createElement( 'div' );
+			code.className = 'cmdroom-md-code';
+			code.contentEditable = 'true';
+			code.spellcheck = false;
+			code.innerHTML = highlightJson( entry.json || '' );
+
+			code.addEventListener( 'input', function () {
+				var offset = getCaretOffset( code );
+				var raw    = extractText( code );
+				code.innerHTML = highlightJson( raw );
+				setCaretOffset( code, offset );
+				entry.json = raw;
+			} );
+			code.addEventListener( 'keydown', function ( e ) {
+				if ( 'Enter' === e.key ) {
+					e.preventDefault();
+					document.execCommand( 'insertText', false, '\n' );
+				}
+			} );
+			code.addEventListener( 'paste', function ( e ) {
+				e.preventDefault();
+				var text = ( e.clipboardData || window.clipboardData ).getData( 'text/plain' );
+				document.execCommand( 'insertText', false, text );
+			} );
+
+			body.appendChild( code );
+			terminal.appendChild( body );
+			return terminal;
+		}
+
 		function renderLibrary() {
 			var wrap = document.createElement( 'div' );
+
+			var toolbar = document.createElement( 'div' );
+			toolbar.className = 'cmdroom-schema-library-toolbar';
+			var addBtn = document.createElement( 'button' );
+			addBtn.type = 'button';
+			addBtn.className = 'cmdroom-schema-btn cmdroom-schema-btn-primary';
+			addBtn.textContent = '+ Nuevo tipo';
+			addBtn.addEventListener( 'click', function () {
+				var raw = window.prompt( 'Nombre del tipo (@type de schema.org, p. ej. Product o Recipe):' );
+				var type = raw ? raw.trim() : '';
+				if ( ! type ) {
+					return;
+				}
+				if ( library[ type ] ) {
+					window.alert( 'Ya existe un tipo con ese nombre.' );
+					return;
+				}
+				library[ type ] = {
+					label: type,
+					description: '',
+					json: '{\n  "@context": "https://schema.org",\n  "@type": "' + type + '"\n}',
+					custom: true,
+				};
+				libraryOverrides[ type ] = library[ type ];
+				editingLibraryType = type;
+				render();
+			} );
+			toolbar.appendChild( addBtn );
+			wrap.appendChild( toolbar );
+
 			var grid = document.createElement( 'div' );
 			grid.className = 'cmdroom-schema-library-grid';
 
 			var used = typesUsedAnywhere();
 
 			Object.keys( library ).forEach( function ( type ) {
-				var card = document.createElement( 'div' );
-				card.className = 'cmdroom-schema-card';
+				var entry    = library[ type ];
+				var editing  = editingLibraryType === type;
+				var card     = document.createElement( 'div' );
+				card.className = 'cmdroom-schema-card' + ( editing ? ' is-editing' : '' );
 
 				var row = document.createElement( 'div' );
 				row.className = 'cmdroom-schema-card-row';
@@ -366,23 +502,87 @@
 				name.textContent = type;
 				row.appendChild( name );
 
-				var badge = document.createElement( 'span' );
+				var badges = document.createElement( 'span' );
+				badges.className = 'cmdroom-schema-card-badges';
 				var inUse = !! used[ type ];
+				var badge = document.createElement( 'span' );
 				badge.className = 'cmdroom-schema-badge ' + ( inUse ? 'in-use' : 'available' );
 				badge.textContent = inUse ? 'En uso' : 'Disponible';
-				row.appendChild( badge );
+				badges.appendChild( badge );
+				if ( entry.custom ) {
+					var customBadge = document.createElement( 'span' );
+					customBadge.className = 'cmdroom-schema-badge custom';
+					customBadge.textContent = 'Propio';
+					badges.appendChild( customBadge );
+				}
+				if ( libraryOverrides[ type ] ) {
+					var editedBadge = document.createElement( 'span' );
+					editedBadge.className = 'cmdroom-schema-badge edited';
+					editedBadge.textContent = 'Editado';
+					badges.appendChild( editedBadge );
+				}
+				row.appendChild( badges );
 
 				card.appendChild( row );
 
-				var desc = document.createElement( 'p' );
-				desc.className = 'cmdroom-schema-card-desc';
-				desc.textContent = library[ type ].description;
-				card.appendChild( desc );
+				if ( editing ) {
+					var descLabel = document.createElement( 'label' );
+					descLabel.className = 'cmdroom-md-block-label';
+					descLabel.textContent = 'Descripción';
+					card.appendChild( descLabel );
 
-				var footer = document.createElement( 'p' );
-				footer.className = 'cmdroom-schema-card-footer';
-				footer.textContent = inUse ? 'Usado en: ' + used[ type ].join( ', ' ) : 'Sin asignar';
-				card.appendChild( footer );
+					var descInput = document.createElement( 'textarea' );
+					descInput.className = 'cmdroom-schema-desc-input';
+					descInput.value = entry.description;
+					descInput.rows = 2;
+					descInput.addEventListener( 'input', function () {
+						entry.description = descInput.value;
+						libraryOverrides[ type ] = entry;
+					} );
+					card.appendChild( descInput );
+
+					var jsonLabel = document.createElement( 'label' );
+					jsonLabel.className = 'cmdroom-md-block-label';
+					jsonLabel.textContent = 'JSON de partida';
+					card.appendChild( jsonLabel );
+
+					card.appendChild( renderLibraryCodeEditor( entry ) );
+					// El terminal muta entry.json por referencia -- se marca
+					// como override en cuanto se abre a editar, no hace
+					// falta esperar a un evento de cambio.
+					libraryOverrides[ type ] = entry;
+
+					var doneBtn = document.createElement( 'button' );
+					doneBtn.type = 'button';
+					doneBtn.className = 'cmdroom-schema-btn';
+					doneBtn.textContent = 'Listo';
+					doneBtn.style.marginTop = '8px';
+					doneBtn.addEventListener( 'click', function () {
+						editingLibraryType = null;
+						render();
+					} );
+					card.appendChild( doneBtn );
+				} else {
+					var desc = document.createElement( 'p' );
+					desc.className = 'cmdroom-schema-card-desc';
+					desc.textContent = entry.description;
+					card.appendChild( desc );
+
+					var footer = document.createElement( 'p' );
+					footer.className = 'cmdroom-schema-card-footer';
+					footer.textContent = inUse ? 'Usado en: ' + used[ type ].join( ', ' ) : 'Sin asignar';
+					card.appendChild( footer );
+
+					var editBtn = document.createElement( 'button' );
+					editBtn.type = 'button';
+					editBtn.className = 'cmdroom-schema-btn';
+					editBtn.textContent = 'Editar';
+					editBtn.addEventListener( 'click', function () {
+						editingLibraryType = type;
+						render();
+					} );
+					card.appendChild( editBtn );
+				}
 
 				grid.appendChild( card );
 			} );
@@ -424,6 +624,13 @@
 					} );
 				} );
 				document.getElementById( 'cmdroom-schema-state' ).value = JSON.stringify( out );
+
+				var libOut = {};
+				Object.keys( libraryOverrides ).forEach( function ( type ) {
+					var entry = libraryOverrides[ type ];
+					libOut[ type ] = { label: entry.label, description: entry.description, json: entry.json };
+				} );
+				document.getElementById( 'cmdroom-schema-library-state' ).value = JSON.stringify( libOut );
 			} );
 		}
 

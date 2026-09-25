@@ -21,6 +21,50 @@
 		return escaped.replace( VAR_PATTERN, '<span class="cmdroom-md-var">$1</span>' );
 	}
 
+	/**
+	 * Lee el texto plano real de un editor contenteditable reconstruyendo
+	 * los saltos de línea a mano -- .textContent NO basta: cuando el
+	 * navegador decide envolver una línea en su propio <div>/<p> en vez de
+	 * pasar por nuestro execCommand('insertText', '\n') del keydown de
+	 * Enter (p. ej. al editar/pegar dentro de una línea ya existente),
+	 * .textContent concatena esos bloques sin ningún separador y el bloque
+	 * entero acaba guardándose como una sola fila -- bug real reportado por
+	 * Damien el 2026-09-24 al corregir un valor y darle a Guardar.
+	 */
+	function extractText( el ) {
+		var lines   = [];
+		var current = '';
+
+		function walk( node ) {
+			if ( node.nodeType === Node.TEXT_NODE ) {
+				current += node.nodeValue;
+				return;
+			}
+			if ( node.nodeType !== Node.ELEMENT_NODE ) {
+				return;
+			}
+			if ( 'BR' === node.nodeName ) {
+				lines.push( current );
+				current = '';
+				return;
+			}
+			var isBlock = 'DIV' === node.nodeName || 'P' === node.nodeName;
+			if ( isBlock && ( lines.length || current ) ) {
+				lines.push( current );
+				current = '';
+			}
+			node.childNodes.forEach( walk );
+			if ( isBlock ) {
+				lines.push( current );
+				current = '';
+			}
+		}
+
+		el.childNodes.forEach( walk );
+		lines.push( current );
+		return lines.join( '\n' );
+	}
+
 	function getCaretOffset( el ) {
 		var sel = window.getSelection();
 		if ( ! sel || sel.rangeCount === 0 ) {
@@ -69,7 +113,7 @@
 
 		editor.addEventListener( 'input', function () {
 			var offset = getCaretOffset( editor );
-			var raw = editor.textContent;
+			var raw = extractText( editor );
 			editor.innerHTML = highlight( raw );
 			setCaretOffset( editor, offset );
 			textarea.value = raw;

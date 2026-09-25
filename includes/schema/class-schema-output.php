@@ -4,15 +4,33 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Imprime el @graph JSON-LD en wp_footer — gated por "Salida en el sitio",
+ * Imprime el @graph JSON-LD en wp_head — gated por "Salida en el sitio",
  * igual que el módulo de Metas, para convivir con Rank Math + EEAT Author
  * mientras se compara plantilla a plantilla.
+ *
+ * Vivía en wp_footer hasta el 2026-09-24 (Datos estructurados al final del
+ * documento, después de todo lo demás). Damien pidió que todos los bloques
+ * de datos estructurados salgan juntos y seguidos -- pero DESPUÉS del bloque
+ * de metas, no antes -- así que se mueve aquí con prioridad 2, justo
+ * detrás de Cmdroom_Meta_Output::print_meta_tags() (colgado en 0/1), y
+ * Cmdroom_Breadcrumbs_Jsonld va justo a continuación (prioridad 3) para que
+ * los dos <script type="application/ld+json"> queden seguidos entre sí, sin
+ * nada intercalado.
  */
 class Cmdroom_Schema_Output {
 
 	public static function init() {
-		add_action( 'wp_footer', array( __CLASS__, 'print_schema' ) );
+		add_action( 'wp_head', array( __CLASS__, 'print_schema' ), 2 );
 	}
+
+	/**
+	 * Tipos que, en un post, salen en su PROPIO <script> -- separado del
+	 * @graph general y primero de todos -- en vez de ir dentro del @graph
+	 * como un nodo más. Pedido explícito de Damien el 2026-09-24. Solo
+	 * Article/NewsArticle (el nodo del propio contenido): Organization,
+	 * BreadcrumbList, etc. siguen juntos en el @graph normal, justo después.
+	 */
+	const STANDALONE_TYPES = array( 'Article', 'NewsArticle' );
 
 	private static function is_active() {
 		return ! is_admin() && Cmdroom_Schema_Settings::is_live_output_enabled();
@@ -24,13 +42,41 @@ class Cmdroom_Schema_Output {
 		}
 
 		$graph = self::resolve_current();
-		if ( ! $graph ) {
+		if ( ! $graph || empty( $graph['@graph'] ) ) {
 			return;
 		}
 
+		// En un post, el nodo Article/NewsArticle sale primero y en su
+		// propio <script> -- como array [ {...} ] con su propio @context
+		// dentro de cada elemento, igual que el feed real de MARCA.com que
+		// usó Damien de referencia el 2026-09-24, no como objeto envuelto
+		// en @graph -- y el resto (Organization, BreadcrumbList si se
+		// añadió como bloque, etc.) va justo detrás en el @graph normal.
+		if ( is_singular( 'post' ) ) {
+			$standalone = array();
+			$rest       = array();
+			foreach ( $graph['@graph'] as $node ) {
+				if ( isset( $node['@type'] ) && in_array( $node['@type'], self::STANDALONE_TYPES, true ) ) {
+					$standalone[] = array_merge( array( '@context' => 'https://schema.org' ), $node );
+				} else {
+					$rest[] = $node;
+				}
+			}
+			if ( $standalone ) {
+				self::print_script( $standalone );
+			}
+			$graph['@graph'] = $rest;
+		}
+
+		if ( ! empty( $graph['@graph'] ) ) {
+			self::print_script( $graph );
+		}
+	}
+
+	private static function print_script( $data ) {
 		printf(
 			'<script type="application/ld+json">%s</script>' . "\n",
-			wp_json_encode( $graph, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE )
+			wp_json_encode( $data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT )
 		);
 	}
 

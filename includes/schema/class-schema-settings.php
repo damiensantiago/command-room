@@ -22,6 +22,15 @@ class Cmdroom_Schema_Settings {
 
 	const OPTION = 'cmdroom_schema_options';
 
+	// Overrides/tipos nuevos de la Librería -- pedido por Damien 2026-09-24:
+	// poder editar el JSON de partida de un tipo existente y añadir tipos
+	// propios. Guarda solo lo que se ha tocado (type => label/description/
+	// json), nunca los 21 tipos enteros -- library() hace el merge con
+	// builtin_library() en caliente, así que una actualización del plugin
+	// que cambie un tipo de fábrica no queda tapada por un override viejo
+	// que nadie llegó a editar.
+	const OPTION_LIBRARY = 'cmdroom_schema_library';
+
 	/**
 	 * Grupo => etiqueta de pestaña, en el orden exacto del handoff (General
 	 * primero, Librería no entra aquí porque no guarda bloques propios).
@@ -231,7 +240,13 @@ class Cmdroom_Schema_Settings {
 					// por el JSON -- texto de admin de confianza, mismo
 					// criterio que el propio bloque JSON.
 					'type' => isset( $block['type'] ) ? sanitize_text_field( $block['type'] ) : '',
-					'json' => (string) $block['json'],
+					// str_replace de \r\n -> \n por si el navegador coló saltos
+					// de línea reales (p. ej. al pegar contenido con CRLF en el
+					// terminal) -- este campo viaja en un input oculto, no un
+					// <textarea>, así que normalmente no le pasa lo que a Metas
+					// (ver Cmdroom_Meta_Settings::normalize_line_endings()),
+					// pero es la misma corrección barata por si acaso.
+					'json' => str_replace( array( "\r\n", "\r" ), "\n", (string) $block['json'] ),
 				);
 			}
 			$groups[ $group ] = $clean;
@@ -240,8 +255,44 @@ class Cmdroom_Schema_Settings {
 		$opts['groups'] = $groups;
 		update_option( self::OPTION, $opts );
 
+		self::save_library_overrides();
+
 		wp_safe_redirect( add_query_arg( 'cmdroom_saved', '1', wp_get_referer() ) );
 		exit;
+	}
+
+	/**
+	 * `library_state` solo trae los tipos que se han tocado en esta sesión
+	 * de edición (nuevos o con el JSON/descripción editados) -- ver
+	 * assets/js/schema-editor.js, libraryOverrides. Mismo criterio que
+	 * schema_state: JSON crudo, sin sanitizar de más (contenido de admin de
+	 * confianza, detrás de manage_options + nonce). Si no viene el campo
+	 * (nadie tocó la Librería en este guardado) no se toca la opción.
+	 */
+	private static function save_library_overrides() {
+		if ( ! isset( $_POST['library_state'] ) ) {
+			return;
+		}
+
+		$decoded = json_decode( wp_unslash( $_POST['library_state'] ), true );
+		if ( ! is_array( $decoded ) ) {
+			return;
+		}
+
+		$overrides = self::get_library_overrides();
+		foreach ( $decoded as $type => $entry ) {
+			$type = sanitize_text_field( (string) $type );
+			if ( '' === $type || ! is_array( $entry ) ) {
+				continue;
+			}
+			$overrides[ $type ] = array(
+				'label'       => isset( $entry['label'] ) ? sanitize_text_field( $entry['label'] ) : $type,
+				'description' => isset( $entry['description'] ) ? sanitize_text_field( $entry['description'] ) : '',
+				'json'        => isset( $entry['json'] ) ? str_replace( array( "\r\n", "\r" ), "\n", (string) $entry['json'] ) : '',
+			);
+		}
+
+		update_option( self::OPTION_LIBRARY, $overrides );
 	}
 
 	/**
@@ -252,7 +303,43 @@ class Cmdroom_Schema_Settings {
 	 * que Damien lo rellene a mano -- Cmdroom_Schema_Builder::resolve_node()
 	 * quita del nodo cualquier campo que quede vacío.
 	 */
+	public static function get_library_overrides() {
+		$saved = get_option( self::OPTION_LIBRARY, array() );
+		return is_array( $saved ) ? $saved : array();
+	}
+
+	/**
+	 * Catálogo real que consume el admin (assets/js/schema-editor.js) y
+	 * cualquier otro sitio del código que necesite resolver un tipo --
+	 * los 21 de fábrica (builtin_library()) con los overrides de Damien
+	 * encima. Un override puede tocar solo la descripción o el JSON de un
+	 * tipo existente, o ser un tipo nuevo entero (no está en el catálogo de
+	 * fábrica) -- en ese caso label() cae al propio nombre del tipo si no
+	 * se guardó.
+	 */
 	public static function library() {
+		$builtin = self::builtin_library();
+		$library = $builtin;
+		foreach ( self::get_library_overrides() as $type => $override ) {
+			if ( ! is_array( $override ) ) {
+				continue;
+			}
+			$base = isset( $library[ $type ] ) ? $library[ $type ] : array( 'label' => $type, 'description' => '', 'json' => '' );
+			$library[ $type ] = array(
+				'label'       => isset( $override['label'] ) ? $override['label'] : $base['label'],
+				'description' => isset( $override['description'] ) ? $override['description'] : $base['description'],
+				'json'        => isset( $override['json'] ) ? $override['json'] : $base['json'],
+				// Un tipo es "custom" si no viene de fábrica -- sirve para
+				// que el admin ofrezca borrarlo (a un tipo de fábrica solo
+				// se le puede restaurar el original, nunca desaparece del
+				// catálogo).
+				'custom'      => ! isset( $builtin[ $type ] ),
+			);
+		}
+		return $library;
+	}
+
+	private static function builtin_library() {
 		return array(
 			'Organization'        => array(
 				'label'       => 'Organization',
@@ -325,15 +412,21 @@ class Cmdroom_Schema_Settings {
 			'CollectionPage'      => array(
 				'label'       => 'CollectionPage',
 				'description' => 'Listados: categorías, etiquetas y archivos.',
-				'json'        => self::pretty( array(
-					'@type'      => 'CollectionPage',
-					'@id'        => '%schema_url%#collectionpage',
-					'name'       => '%schema_headline%',
-					'description' => '%schema_description%',
-					'url'        => '%schema_url%',
-					'inLanguage' => '%schema_lang%',
-					'isPartOf'   => array( '@id' => '%schema_website_id%' ),
-				) ),
+				'json'        => '{
+  "@type": "CollectionPage",
+  "@id": "%schema_url%#collectionpage",
+  "name": "%schema_headline%",
+  "description": "%schema_description%",
+  "url": "%schema_url%",
+  "inLanguage": "%schema_lang%",
+  "isPartOf": {
+    "@id": "%schema_website_id%"
+  },
+  "mainEntity": {
+    "@type": "ItemList",
+    "itemListElement": %schema_item_list_items%
+  }
+}',
 			),
 			'Article'             => array(
 				'label'       => 'Article',
@@ -363,25 +456,57 @@ class Cmdroom_Schema_Settings {
 			'NewsArticle'         => array(
 				'label'       => 'NewsArticle',
 				'description' => 'Noticias con fecha de publicación y editor.',
-				'json'        => self::pretty( array(
-					'@type'            => 'NewsArticle',
-					'@id'              => '%schema_url%#newsarticle',
-					'headline'         => '%schema_headline%',
-					'description'      => '%schema_description%',
-					'url'              => '%schema_url%',
-					'inLanguage'       => '%schema_lang%',
-					'datePublished'    => '%schema_date_published%',
-					'dateModified'     => '%schema_date_modified%',
-					'image'            => '%schema_image%',
-					'isPartOf'         => array( '@id' => '%schema_website_id%' ),
-					'mainEntityOfPage' => '%schema_url%',
-					'publisher'        => array( '@id' => '%schema_organization_id%' ),
-					'author'           => array(
-						'@type' => 'Person',
-						'name'  => '%schema_author_name%',
-						'url'   => '%schema_author_url%',
-					),
-				) ),
+				// No usa self::pretty() (array PHP -> json_encode) porque
+				// %schema_image_objects% tiene que insertarse SIN comillas
+				// (es un array ya serializado, ver Cmdroom_Schema_Variables) --
+				// mismo caso que el bloque BreadcrumbList de abajo. Estructura
+				// adaptada de un ejemplo real de MARCA.com 2026-09-24 (Damien):
+				// sin "video"/"license" (Dripbase no tiene vídeo embebido ni
+				// página de licencia propia) y con "isPartOf" apuntando al
+				// WebSite del sitio en vez del bundle de suscripción de
+				// pago que usa MARCA (Dripbase no tiene productos de pago).
+				// El "author" SÍ se amplió como en MARCA (Damien lo pidió
+				// expresamente) con description/jobTitle/image reales --
+				// bio y avatar (Simple Local Avatars) ya existen en los
+				// perfiles de Dripbase, y jobTitle lee el campo propio del
+				// tema "db_author_role" cuando el autor lo tiene relleno.
+				// Sin sameAs (redes sociales): ningún autor de Dripbase
+				// tiene esos perfiles cargados todavía, a diferencia de
+				// MARCA -- se puede añadir el día que existan.
+				'json'        => '{
+  "@type": "NewsArticle",
+  "headline": "%schema_headline%",
+  "alternativeHeadline": "%schema_headline%",
+  "datePublished": "%schema_date_published%",
+  "dateModified": "%schema_date_modified%",
+  "publisher": {
+    "@id": "%schema_organization_id%"
+  },
+  "description": "%schema_description%",
+  "keywords": "%schema_keywords%",
+  "articleSection": "%schema_category%",
+  "articleBody": "%schema_article_body%",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "%schema_url%"
+  },
+  "author": [
+    {
+      "@type": "Person",
+      "name": "%schema_author_name%",
+      "url": "%schema_author_url%",
+      "description": "%schema_author_description%",
+      "jobTitle": "%schema_author_job_title%",
+      "image": "%schema_author_image%"
+    }
+  ],
+  "image": %schema_image_objects%,
+  "inLanguage": "%schema_lang%",
+  "isAccessibleForFree": true,
+  "isPartOf": {
+    "@id": "%schema_website_id%"
+  }
+}',
 			),
 			'Person'              => array(
 				'label'       => 'Person',
@@ -623,6 +748,7 @@ class Cmdroom_Schema_Settings {
 					<?php wp_nonce_field( 'cmdroom_save_schema_settings' ); ?>
 					<input type="hidden" name="action" value="cmdroom_save_schema_settings" />
 					<input type="hidden" name="schema_state" id="cmdroom-schema-state" value="" />
+					<input type="hidden" name="library_state" id="cmdroom-schema-library-state" value="" />
 
 					<div class="cmdroom-schema-tabs" id="cmdroom-schema-tabs">
 						<?php foreach ( $tabs as $key => $label ) : ?>

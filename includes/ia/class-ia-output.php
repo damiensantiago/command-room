@@ -13,7 +13,17 @@ class Cmdroom_Ia_Output {
 
 	public static function init() {
 		add_action( 'template_redirect', array( __CLASS__, 'maybe_serve' ), 0 );
-		add_action( 'wp_head', array( __CLASS__, 'maybe_print_link_tag' ) );
+		// Prioridad 1 a propósito -- pedido explícito de Damien 2026-09-25:
+		// el <link> de markdown tiene que salir justo detrás de las metas
+		// (Cmdroom_Meta_Output::print_meta_tags(), prioridad 1) y del RSS
+		// (Cmdroom_Feed_Links::print_feed_links_extra(), prioridad 1) y
+		// antes de cualquier otra cosa (schema en prioridad 2, breadcrumbs
+		// en 3, y todos los <link> nativos de WordPress en 10 por defecto:
+		// RSD, wlwmanifest, oEmbed...). Dentro del mismo cubo de prioridad
+		// gana el orden de registro, y Cmdroom_Ia_Output::init() se llama
+		// después de Meta_Output/Feed_Links en el bootstrap
+		// (command-room.php), así que corre justo a continuación de los dos.
+		add_action( 'wp_head', array( __CLASS__, 'maybe_print_link_tag' ), 1 );
 	}
 
 	public static function maybe_serve() {
@@ -424,7 +434,25 @@ class Cmdroom_Ia_Output {
 		if ( ! $post instanceof WP_Post || ! Cmdroom_Ia_Settings::is_markdown_post_type( $post->post_type ) ) {
 			return;
 		}
-		$url = untrailingslashit( get_permalink( $post ) ) . '.md';
-		printf( '<link rel="alternate" type="text/markdown" href="%s" />' . "\n", esc_url( $url ) );
+		printf( '<link rel="alternate" type="text/markdown" href="%s" />' . "\n", esc_url( self::markdown_url( $post ) ) );
+	}
+
+	/**
+	 * URL .md de un post/página. Caso especial: la portada estática
+	 * (page_on_front) -- get_permalink() le devuelve home_url('/') tal
+	 * cual (ver _get_page_link() del core), así que untrailingslashit()
+	 * se come la ÚNICA barra de la URL y "dominio.md" deja de ser una
+	 * ruta del sitio, apunta a otro host -- bug real encontrado el
+	 * 2026-09-25 al verificar el <link> en vivo. Aquí se sirve como
+	 * "dominio/.md" en vez de "dominio.md", igual que ya espera
+	 * maybe_serve_markdown() (quita ".md" y resuelve "/" como portada).
+	 */
+	public static function markdown_url( $post ) {
+		$permalink = untrailingslashit( get_permalink( $post ) );
+		$path      = wp_parse_url( $permalink, PHP_URL_PATH );
+		if ( ! $path ) {
+			return home_url( '/.md' );
+		}
+		return $permalink . '.md';
 	}
 }

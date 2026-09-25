@@ -20,6 +20,7 @@ class Cmdroom_Config_Admin {
 		'autoimage'   => 'autoimage',
 		'ia'          => 'ia',
 		'tags'        => 'tags',
+		'rss'         => 'rss',
 		'tools'       => 'tools',
 	);
 
@@ -48,10 +49,6 @@ class Cmdroom_Config_Admin {
 		wp_enqueue_script( 'cmdroom-servidor-editor', CMDROOM_URL . 'assets/js/servidor-editor.js', array(), CMDROOM_VERSION, true );
 		wp_enqueue_script( 'cmdroom-config-editor', CMDROOM_URL . 'assets/js/config-editor.js', array(), CMDROOM_VERSION, true );
 		wp_enqueue_script( 'cmdroom-tags-editor', CMDROOM_URL . 'assets/js/tags-editor.js', array(), CMDROOM_VERSION, true );
-		wp_localize_script( 'cmdroom-config-editor', 'cmdroomConfig', array(
-			'restUrl' => esc_url_raw( rest_url( 'command-room/v1/preview' ) ),
-			'nonce'   => wp_create_nonce( 'wp_rest' ),
-		) );
 	}
 
 	public static function render_legacy_redirect( $old_slug ) {
@@ -77,6 +74,7 @@ class Cmdroom_Config_Admin {
 			'autoimage'   => __( 'Auto-Image SEO', 'command-room' ),
 			'ia'          => __( 'IA', 'command-room' ),
 			'tags'        => __( 'Tags', 'command-room' ),
+			'rss'         => __( 'RSS', 'command-room' ),
 			'tools'       => __( 'Herramientas', 'command-room' ),
 		);
 		?>
@@ -84,7 +82,7 @@ class Cmdroom_Config_Admin {
 			<h1 class="cmdroom-md-h1"><?php esc_html_e( 'Configuración', 'command-room' ); ?></h1>
 
 			<div class="cmdroom-md-container">
-				<p class="cmdroom-md-intro"><?php esc_html_e( 'Indexación de archivos y taxonomías, migas de pan, atributos automáticos de imágenes y herramientas de importación y diagnóstico.', 'command-room' ); ?></p>
+				<p class="cmdroom-md-intro"><?php esc_html_e( 'Toggles maestros de salida en el sitio, indexación de archivos y taxonomías, migas de pan, atributos automáticos de imágenes y herramientas de importación y diagnóstico.', 'command-room' ); ?></p>
 
 				<nav class="cr-tabs">
 					<?php foreach ( $labels as $tab => $label ) : ?>
@@ -106,8 +104,18 @@ class Cmdroom_Config_Admin {
 					case 'tags':
 						Cmdroom_Tags_Settings::render_tab();
 						break;
+					case 'rss':
+						Cmdroom_Rss_Settings::render_tab();
+						break;
 					case 'tools':
 						Cmdroom_Tools_Admin::render_tab();
+						?>
+						<div class="cr-card cmdroom-ia-block cmdroom-tools-salida-card">
+							<h2 class="cmdroom-ia-block-title"><?php esc_html_e( 'Salida en el sitio', 'command-room' ); ?></h2>
+							<p class="cmdroom-config-rule-desc"><?php esc_html_e( 'Toggles maestros de impresión real: mientras estén apagados, los cambios se guardan pero no se aplican en el sitio.', 'command-room' ); ?></p>
+							<?php self::render_salida_tab(); ?>
+						</div>
+						<?php
 						break;
 					default:
 						Cmdroom_Archive_Optimization_Settings::render_tab();
@@ -117,5 +125,22 @@ class Cmdroom_Config_Admin {
 			</div>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Toggles maestros de impresión real (Metas, Datos estructurados,
+	 * Sitemaps + vista previa, Redirecciones) -- antes vivían en la
+	 * pantalla General, luego pasaron a ser su propia pestaña "Salida en
+	 * el sitio" aquí (2026-09-24), y ahora se integran dentro de
+	 * "Herramientas" (2026-09-25, petición de Damien) en vez de tener
+	 * pestaña propia. Cada bloque sigue siendo dueño de su propio
+	 * guardado, esto solo los agrupa.
+	 */
+	private static function render_salida_tab() {
+		Cmdroom_Seo_Coexistence::render();
+		Cmdroom_Meta_Settings::render_general_section();
+		Cmdroom_Schema_Settings::render_general_section();
+		Cmdroom_Sitemap_Settings::render_general_section();
+		Cmdroom_Redirect_Admin::render_general_section();
 	}
 }

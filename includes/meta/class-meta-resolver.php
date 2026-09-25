@@ -106,12 +106,26 @@ class Cmdroom_Meta_Resolver {
 			return null;
 		}
 
+		// Override por término (2026-09-25, pedido por Damien para "Listado
+		// completo" de Tags): mismo mecanismo que el override de post
+		// (_cmdroom_title/_cmdroom_description), pero en term meta -- cae a
+		// la plantilla de la taxonomía si no se ha configurado nada, igual
+		// que un post sin override cae a la plantilla de su tipo.
+		$override_title = get_term_meta( $term->term_id, '_cmdroom_title', true );
+		$override_desc  = get_term_meta( $term->term_id, '_cmdroom_description', true );
+
 		$template = Cmdroom_Meta_Settings::get_taxonomy_template( $term->taxonomy );
 		$context  = array( 'term' => $term );
 		$vars     = Cmdroom_Meta_Variables::get_vars( $context );
 
-		$title = isset( $vars['title'] ) ? $vars['title'] : $term->name;
-		$desc  = isset( $vars['excerpt'] ) ? $vars['excerpt'] : '';
+		$title = $override_title ? Cmdroom_Meta_Variables::replace( $override_title, $context ) : ( isset( $vars['title'] ) ? $vars['title'] : $term->name );
+		$desc  = $override_desc ? Cmdroom_Meta_Variables::replace( $override_desc, $context ) : ( isset( $vars['excerpt'] ) ? $vars['excerpt'] : '' );
+
+		// Igual que en resolve_for_post(): se inyecta ya resuelto para que
+		// %title%/%excerpt% dentro del bloque de <head> de la taxonomía
+		// también reflejen el override de este término concreto.
+		$context['title_override']   = $title;
+		$context['excerpt_override'] = $desc;
 
 		$head_html = Cmdroom_Meta_Variables::replace( $template['html'], $context, true );
 
@@ -329,11 +343,27 @@ class Cmdroom_Meta_Resolver {
 		return self::get_business_logo_fallback();
 	}
 
+	/**
+	 * Orden: logo del negocio (Datos estructurados) primero -- ya es lo que
+	 * cumple este papel hoy en los sitios que lo tienen configurado -- y
+	 * solo si está vacío se prueba la imagen de respaldo de la pestaña
+	 * "Variables" (2026-09-25, Cmdroom_Variables_Settings). Anteponerla
+	 * habría desplazado el logo en cualquier sitio que ya dependa de él sin
+	 * haber tocado nada nuevo.
+	 */
 	private static function get_business_logo_fallback() {
-		if ( ! class_exists( 'Cmdroom_Schema_Settings' ) ) {
-			return '';
+		if ( class_exists( 'Cmdroom_Schema_Settings' ) ) {
+			$business = Cmdroom_Schema_Settings::get_business();
+			if ( ! empty( $business['logo'] ) ) {
+				return $business['logo'];
+			}
 		}
-		$business = Cmdroom_Schema_Settings::get_business();
-		return ! empty( $business['logo'] ) ? $business['logo'] : '';
+		if ( class_exists( 'Cmdroom_Variables_Settings' ) ) {
+			$backup = Cmdroom_Variables_Settings::resolve_backup_image_url();
+			if ( $backup ) {
+				return $backup;
+			}
+		}
+		return '';
 	}
 }

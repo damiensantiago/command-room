@@ -188,10 +188,16 @@ class Cmdroom_Ia_Settings {
 				<p class="cmdroom-config-note"><?php esc_html_e( 'El contenido noindex nunca se sirve en markdown (devuelve 404). La conversión de HTML a markdown se hace al vuelo, sin guardar archivos físicos.', 'command-room' ); ?></p>
 
 				<?php
-				$example = get_permalink( get_option( 'page_on_front' ) ? get_option( 'page_on_front' ) : self::first_public_post_id() );
-				if ( $example ) :
+				// La URL .md se construye con Cmdroom_Ia_Output::markdown_url(),
+				// no a mano -- la portada estática es un caso especial
+				// (get_permalink() le devuelve home_url('/') tal cual, un
+				// untrailingslashit()+'.md' ingenuo produce "dominio.md", que
+				// apunta a otro host en vez de a la portada; bug real
+				// encontrado el 2026-09-25).
+				$example_id = get_option( 'page_on_front' ) ? get_option( 'page_on_front' ) : self::first_public_post_id();
+				if ( $example_id ) :
 					?>
-					<a class="cmdroom-robots-view-link" href="<?php echo esc_url( untrailingslashit( $example ) . '.md' ); ?>" target="_blank"><?php esc_html_e( 'Ver un ejemplo ↗', 'command-room' ); ?></a>
+					<a class="cmdroom-robots-view-link" href="<?php echo esc_url( Cmdroom_Ia_Output::markdown_url( $example_id ) ); ?>" target="_blank"><?php esc_html_e( 'Ver un ejemplo ↗', 'command-room' ); ?></a>
 				<?php endif; ?>
 			</div>
 

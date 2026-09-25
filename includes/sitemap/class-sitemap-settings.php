@@ -57,6 +57,20 @@ class Cmdroom_Sitemap_Settings {
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 	}
 
+	/**
+	 * URL definitiva del sitemap, sin parámetros -- pedido por Damien
+	 * 2026-09-24 ("necesito tener la URL y poder abrirlo"; el intento
+	 * anterior con ?cmdroom_preview=1 para verla sin activar "Salida en el
+	 * sitio" tampoco le valía, quería la URL de verdad o nada). Solo
+	 * funciona cuando "Salida en el sitio" está encendida -- si está
+	 * apagada, esta misma URL la sigue sirviendo Rank Math (o 404, si no
+	 * hay nada) y eso es correcto, no un fallo de esta función.
+	 */
+	public static function preview_url( $slug ) {
+		$file = 'index' === $slug ? 'sitemap_index.xml' : 'sitemap-' . $slug . '.xml';
+		return home_url( '/' . $file );
+	}
+
 	public static function enqueue_assets( $hook ) {
 		if ( ! isset( $_GET['page'] ) || 'cmdroom-sitemaps' !== $_GET['page'] ) {
 			return;
@@ -198,36 +212,46 @@ class Cmdroom_Sitemap_Settings {
 			</table>
 			<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
 		</form>
-
-		<h3 style="margin-top:32px;"><?php esc_html_e( 'Vista previa de sitemaps', 'command-room' ); ?></h3>
-		<p class="description"><?php esc_html_e( 'Genera el XML aunque la salida en el sitio esté apagada — para comprobarlo sin tocar /sitemap_index.xml mientras lo sirve Rank Math.', 'command-room' ); ?></p>
-		<form method="get">
-			<input type="hidden" name="page" value="cmdroom" />
-			<select name="cmdroom_preview_sitemap">
-				<option value="index"><?php esc_html_e( 'Índice (sitemap_index.xml)', 'command-room' ); ?></option>
-				<?php foreach ( self::get_enabled_definitions() as $def ) : ?>
-					<option value="<?php echo esc_attr( $def['slug'] ); ?>" <?php selected( isset( $_GET['cmdroom_preview_sitemap'] ) ? sanitize_text_field( wp_unslash( $_GET['cmdroom_preview_sitemap'] ) ) : '', $def['slug'] ); ?>><?php echo esc_html( $def['label'] ); ?> (sitemap-<?php echo esc_html( $def['slug'] ); ?>.xml)</option>
-				<?php endforeach; ?>
-			</select>
-			<?php submit_button( __( 'Ver XML', 'command-room' ), 'secondary', '', false ); ?>
-		</form>
-
-		<?php if ( ! empty( $_GET['cmdroom_preview_sitemap'] ) ) :
-			$which = sanitize_text_field( wp_unslash( $_GET['cmdroom_preview_sitemap'] ) );
-			$xml   = 'index' === $which ? Cmdroom_Sitemap_Render::render_index() : self::preview_definition( $which );
-			?>
-			<?php if ( null === $xml ) : ?>
-				<p><?php esc_html_e( 'No se encontró esa definición.', 'command-room' ); ?></p>
-			<?php else : ?>
-				<pre style="max-width:900px;max-height:500px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:1em;margin-top:1em;"><?php echo esc_html( $xml ); ?></pre>
-			<?php endif; ?>
-		<?php endif; ?>
 		<?php
 	}
 
-	private static function preview_definition( $slug ) {
-		$def = self::get_definition( $slug );
-		return $def ? Cmdroom_Sitemap_Render::render_definition( $def ) : null;
+	/**
+	 * Tabla de referencia con la URL definitiva de cada sitemap -- vivía
+	 * pegada al toggle de "Salida en el sitio" (arriba, en
+	 * render_general_section()) porque antes las dos cosas se veían en el
+	 * mismo sitio. Desde que "Salida en el sitio" se unificó dentro de
+	 * Configuración → Herramientas (2026-09-25) esta tabla se queda aquí,
+	 * en Sitemaps → Configuración, que es donde Damien la espera de verdad
+	 * al estar editando las definiciones. Llamada desde render_page().
+	 */
+	public static function render_urls_table() {
+		?>
+		<h3 style="margin-top:32px;"><?php esc_html_e( 'URLs de los sitemaps', 'command-room' ); ?></h3>
+		<p class="description"><?php esc_html_e( 'La URL definitiva de cada sitemap. Solo responde con el XML de Command Room mientras "Salida en el sitio" esté activada en Configuración → Herramientas -- si está apagada, esta misma URL la sigue sirviendo Rank Math (o da 404 si no hay nada).', 'command-room' ); ?></p>
+		<table class="widefat striped" style="max-width:600px;margin-top:8px;">
+			<thead>
+				<tr>
+					<th><?php esc_html_e( 'Sitemap', 'command-room' ); ?></th>
+					<th><?php esc_html_e( 'URL', 'command-room' ); ?></th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php
+				$rows = array( array( 'slug' => 'index', 'label' => __( 'Índice', 'command-room' ) ) );
+				foreach ( self::get_enabled_definitions() as $def ) {
+					$rows[] = array( 'slug' => $def['slug'], 'label' => $def['label'] );
+				}
+				foreach ( $rows as $row ) :
+					$url = self::preview_url( $row['slug'] );
+					?>
+					<tr>
+						<td><?php echo esc_html( $row['label'] ); ?></td>
+						<td><a href="<?php echo esc_url( $url ); ?>" target="_blank" rel="noreferrer"><?php echo esc_html( $url ); ?></a></td>
+					</tr>
+				<?php endforeach; ?>
+			</tbody>
+		</table>
+		<?php
 	}
 
 	/**
@@ -343,13 +367,7 @@ class Cmdroom_Sitemap_Settings {
 			<div class="cmdroom-md-container">
 				<p class="cmdroom-md-intro">
 					<?php if ( self::is_live_output_enabled() ) : ?>
-						<?php
-						printf(
-							/* translators: %s: sitemap index URL */
-							esc_html__( 'La salida en el sitio está activada: %s lo sirve Command Room.', 'command-room' ),
-							'<a href="' . esc_url( home_url( '/sitemap_index.xml' ) ) . '" target="_blank">' . esc_html( home_url( '/sitemap_index.xml' ) ) . '</a>'
-						);
-						?>
+						<?php esc_html_e( 'Gestiona y configura todos tus sitemaps desde un único sitio.', 'command-room' ); ?>
 					<?php else : ?>
 						<?php esc_html_e( 'La salida en el sitio está desactivada: /sitemap_index.xml lo sigue sirviendo Rank Math. Usa la vista previa de Command Room → General para comprobar cada definición antes de activarlo.', 'command-room' ); ?>
 					<?php endif; ?>
@@ -366,6 +384,7 @@ class Cmdroom_Sitemap_Settings {
 
 					<div class="cmdroom-sitemaps-panel" data-tab="config" <?php echo 'config' === $active_tab ? '' : 'hidden'; ?>>
 						<?php self::render_definitions_table( $definitions ); ?>
+						<?php self::render_urls_table(); ?>
 					</div>
 
 					<div class="cmdroom-sitemaps-panel" data-tab="avanzado" <?php echo 'avanzado' === $active_tab ? '' : 'hidden'; ?>>
@@ -384,6 +403,13 @@ class Cmdroom_Sitemap_Settings {
 					<p class="cmdroom-md-footer-text">
 						<?php esc_html_e( 'Deja el slug en blanco para no guardar esa fila (así se "borra" una definición existente). "Imágenes" y "Vídeos" solo aplican a Origen = Posts.', 'command-room' ); ?>
 					</p>
+					<ul class="cmdroom-md-footer-list">
+						<li><strong><?php esc_html_e( 'Formato:', 'command-room' ); ?></strong> <?php esc_html_e( 'News: solo últimas 48h.', 'command-room' ); ?></li>
+						<li><strong><?php esc_html_e( 'Tipo:', 'command-room' ); ?></strong> <?php esc_html_e( 'solo si Origen = Posts.', 'command-room' ); ?></li>
+						<li><strong><?php esc_html_e( 'Taxonomía:', 'command-room' ); ?></strong> <?php esc_html_e( 'obligatoria si Origen = URLs de archivo.', 'command-room' ); ?></li>
+						<li><strong><?php esc_html_e( 'Términos:', 'command-room' ); ?></strong> <?php esc_html_e( 'slugs separados por coma; vacío = todos.', 'command-room' ); ?></li>
+						<li><strong><?php esc_html_e( 'Idioma:', 'command-room' ); ?></strong> <?php esc_html_e( 'Google News.', 'command-room' ); ?></li>
+					</ul>
 				</div>
 			</div>
 		</div>
@@ -400,11 +426,11 @@ class Cmdroom_Sitemap_Settings {
 						<th><?php esc_html_e( 'Slug (URL)', 'command-room' ); ?></th>
 						<th><?php esc_html_e( 'Nombre', 'command-room' ); ?></th>
 						<th><?php esc_html_e( 'Origen', 'command-room' ); ?></th>
-						<th><?php esc_html_e( 'Formato', 'command-room' ); ?><br /><span class="cmdroom-sitemaps-th-help"><?php esc_html_e( 'News: solo últimas 48h', 'command-room' ); ?></span></th>
-						<th><?php esc_html_e( 'Tipo', 'command-room' ); ?><br /><span class="cmdroom-sitemaps-th-help"><?php esc_html_e( 'Solo si Origen = Posts', 'command-room' ); ?></span></th>
-						<th><?php esc_html_e( 'Taxonomía', 'command-room' ); ?><br /><span class="cmdroom-sitemaps-th-help"><?php esc_html_e( 'Obligatoria si Origen = URLs de archivo', 'command-room' ); ?></span></th>
-						<th><?php esc_html_e( 'Términos', 'command-room' ); ?><br /><span class="cmdroom-sitemaps-th-help"><?php esc_html_e( 'Slugs separados por coma; vacío = todos', 'command-room' ); ?></span></th>
-						<th><?php esc_html_e( 'Idioma', 'command-room' ); ?><br /><span class="cmdroom-sitemaps-th-help"><?php esc_html_e( 'Google News', 'command-room' ); ?></span></th>
+						<th><?php esc_html_e( 'Formato', 'command-room' ); ?></th>
+						<th><?php esc_html_e( 'Tipo', 'command-room' ); ?></th>
+						<th><?php esc_html_e( 'Taxonomía', 'command-room' ); ?></th>
+						<th><?php esc_html_e( 'Términos', 'command-room' ); ?></th>
+						<th><?php esc_html_e( 'Idioma', 'command-room' ); ?></th>
 						<th><?php esc_html_e( 'Límite', 'command-room' ); ?></th>
 						<th><?php esc_html_e( 'Imágenes', 'command-room' ); ?></th>
 						<th><?php esc_html_e( 'Vídeos', 'command-room' ); ?></th>
@@ -415,14 +441,8 @@ class Cmdroom_Sitemap_Settings {
 				<tbody>
 					<?php foreach ( $definitions as $i => $def ) :
 						$vars = wp_parse_args( isset( $def['vars'] ) ? $def['vars'] : array(), self::VAR_DEFAULTS );
-						// Al preview de Command Room → General -- funciona
-						// igual con la salida en el sitio apagada o encendida,
-						// a diferencia de enlazar directo a /sitemap-{slug}.xml
-						// (que mientras esté apagada sigue sirviendo Rank Math).
-						$preview_url = $def['slug'] ? add_query_arg(
-							array( 'page' => 'cmdroom', 'cmdroom_preview_sitemap' => $def['slug'] ),
-							admin_url( 'admin.php' )
-						) : '';
+						// URL definitiva -- ver Cmdroom_Sitemap_Settings::preview_url().
+						$preview_url = $def['slug'] ? self::preview_url( $def['slug'] ) : '';
 						?>
 						<tr class="cmdroom-sitemaps-row<?php echo empty( $def['enabled'] ) ? ' is-inactive' : ''; ?>">
 							<td><input type="checkbox" name="definitions[<?php echo (int) $i; ?>][enabled]" value="1" <?php checked( ! empty( $def['enabled'] ) ); ?> /></td>

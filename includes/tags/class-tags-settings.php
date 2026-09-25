@@ -39,6 +39,8 @@ class Cmdroom_Tags_Settings {
 		add_action( 'wp_ajax_cmdroom_tags_merge', array( __CLASS__, 'handle_merge' ) );
 		add_action( 'wp_ajax_cmdroom_tags_delete_empty', array( __CLASS__, 'handle_delete_empty' ) );
 		add_action( 'wp_ajax_cmdroom_tags_delete_one', array( __CLASS__, 'handle_delete_one' ) );
+		add_action( 'wp_ajax_cmdroom_tags_create', array( __CLASS__, 'handle_create' ) );
+		add_action( 'wp_ajax_cmdroom_tags_save_meta', array( __CLASS__, 'handle_save_meta' ) );
 		add_action( 'wp_ajax_cmdroom_tags_bulk_preview', array( __CLASS__, 'handle_bulk_preview' ) );
 		add_action( 'wp_ajax_cmdroom_tags_bulk_apply', array( __CLASS__, 'handle_bulk_apply' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'maybe_notice_over_limit' ) );
@@ -223,6 +225,70 @@ class Cmdroom_Tags_Settings {
 		) );
 	}
 
+	/**
+	 * Crear una etiqueta nueva directamente desde el Listado completo, sin
+	 * pasar por el editor de una entrada -- pedido por Damien 2026-09-25.
+	 * El JS recarga la página al terminar (igual que las demás acciones de
+	 * esta pestaña no reconstruyen filas a mano, salvo la fila que borran).
+	 */
+	public static function handle_create() {
+		self::verify_ajax();
+
+		$name = isset( $_POST['name'] ) ? sanitize_text_field( wp_unslash( $_POST['name'] ) ) : '';
+		if ( '' === $name ) {
+			wp_send_json_error( array( 'message' => __( 'Escribe un nombre para la etiqueta.', 'command-room' ) ), 400 );
+		}
+
+		$result = wp_insert_term( $name, 'post_tag' );
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( array( 'message' => $result->get_error_message() ), 400 );
+		}
+
+		wp_send_json_success( array(
+			/* translators: %s: nombre de la etiqueta creada */
+			'message' => sprintf( __( 'Etiqueta "%s" creada.', 'command-room' ), $name ),
+		) );
+	}
+
+	/**
+	 * Override de título/meta descripción para UNA etiqueta concreta --
+	 * pedido por Damien 2026-09-25 ("poder aplicar lógicas de metas
+	 * diferentes" por tag, no solo la plantilla global de Metas → Tags).
+	 * Mismo mecanismo que el override por post (_cmdroom_title/
+	 * _cmdroom_description), pero en term meta -- lo consume
+	 * Cmdroom_Meta_Resolver::resolve_for_term(). Vacío = sin override, cae a
+	 * la plantilla de la taxonomía como hasta ahora.
+	 */
+	public static function handle_save_meta() {
+		self::verify_ajax();
+
+		$term_id = isset( $_POST['term_id'] ) ? (int) $_POST['term_id'] : 0;
+		$term    = get_term( $term_id, 'post_tag' );
+
+		if ( ! $term || is_wp_error( $term ) ) {
+			wp_send_json_error( array( 'message' => __( 'Etiqueta no válida.', 'command-room' ) ), 400 );
+		}
+
+		$title = isset( $_POST['title'] ) ? sanitize_text_field( wp_unslash( $_POST['title'] ) ) : '';
+		$desc  = isset( $_POST['description'] ) ? sanitize_textarea_field( wp_unslash( $_POST['description'] ) ) : '';
+
+		self::save_term_meta_field( $term_id, '_cmdroom_title', $title );
+		self::save_term_meta_field( $term_id, '_cmdroom_description', $desc );
+
+		wp_send_json_success( array(
+			'message'    => __( 'Metas de la etiqueta guardadas.', 'command-room' ),
+			'has_custom' => ( '' !== $title || '' !== $desc ),
+		) );
+	}
+
+	private static function save_term_meta_field( $term_id, $key, $value ) {
+		if ( '' === $value ) {
+			delete_term_meta( $term_id, $key );
+		} else {
+			update_term_meta( $term_id, $key, $value );
+		}
+	}
+
 	/* ------------------------------------------------------------------ */
 	/* Etiquetado masivo                                                 */
 	/* ------------------------------------------------------------------ */
@@ -365,9 +431,13 @@ class Cmdroom_Tags_Settings {
 			<div class="cmdroom-ia-block-head">
 				<div>
 					<h2 class="cmdroom-ia-block-title"><?php esc_html_e( 'Listado completo', 'command-room' ); ?></h2>
-					<p class="cmdroom-config-rule-desc"><?php esc_html_e( 'Ordenadas de menos a más usadas. Fusiona duplicados o borra las que no tienen ninguna entrada.', 'command-room' ); ?></p>
+					<p class="cmdroom-config-rule-desc"><?php esc_html_e( 'Ordenadas de menos a más usadas. Fusiona duplicados, borra las que no tienen ninguna entrada, o configura un título y descripción propios para una en concreto.', 'command-room' ); ?></p>
 				</div>
-				<button type="button" class="cr-btn-secondary" data-cr-tags-delete-empty><?php esc_html_e( 'Eliminar todas las vacías', 'command-room' ); ?></button>
+				<div class="cmdroom-tags-header-actions">
+					<input type="text" class="cr-input" data-cr-tags-create-name placeholder="<?php esc_attr_e( 'Nombre de la etiqueta nueva', 'command-room' ); ?>" />
+					<button type="button" class="cr-btn-secondary" data-cr-tags-create><?php esc_html_e( 'Crear', 'command-room' ); ?></button>
+					<button type="button" class="cr-btn-secondary" data-cr-tags-delete-empty><?php esc_html_e( 'Eliminar todas las vacías', 'command-room' ); ?></button>
+				</div>
 			</div>
 
 			<p class="cmdroom-tags-status" data-cr-tags-status hidden></p>
@@ -381,11 +451,16 @@ class Cmdroom_Tags_Settings {
 							<th><?php esc_html_e( 'Etiqueta', 'command-room' ); ?></th>
 							<th><?php esc_html_e( 'Entradas', 'command-room' ); ?></th>
 							<th><?php esc_html_e( 'Fusionar en…', 'command-room' ); ?></th>
+							<th><?php esc_html_e( 'Metas', 'command-room' ); ?></th>
 							<th></th>
 						</tr>
 					</thead>
 					<tbody>
-						<?php foreach ( $tags as $tag ) : ?>
+						<?php foreach ( $tags as $tag ) :
+							$custom_title = get_term_meta( $tag->term_id, '_cmdroom_title', true );
+							$custom_desc  = get_term_meta( $tag->term_id, '_cmdroom_description', true );
+							$has_custom   = ( '' !== $custom_title || '' !== $custom_desc );
+							?>
 							<tr class="cmdroom-tags-row<?php echo 0 === (int) $tag->count ? ' is-empty' : ''; ?>" data-term-id="<?php echo (int) $tag->term_id; ?>">
 								<td><?php echo esc_html( $tag->name ); ?></td>
 								<td><span class="cr-chip"><?php echo (int) $tag->count; ?></span></td>
@@ -400,6 +475,16 @@ class Cmdroom_Tags_Settings {
 									<button type="button" class="cr-btn-secondary" data-cr-tags-merge><?php esc_html_e( 'Fusionar', 'command-room' ); ?></button>
 								</td>
 								<td>
+									<button
+										type="button"
+										class="cr-btn-secondary cr-btn-compact"
+										data-cr-tags-configure
+										data-title="<?php echo esc_attr( $custom_title ); ?>"
+										data-description="<?php echo esc_attr( $custom_desc ); ?>"
+									><?php esc_html_e( 'Configurar', 'command-room' ); ?></button>
+									<span class="cr-pill cr-pill-other cmdroom-tags-custom-pill" data-cr-tags-custom-pill <?php echo $has_custom ? '' : 'hidden'; ?>><?php esc_html_e( 'Propias', 'command-room' ); ?></span>
+								</td>
+								<td>
 									<?php if ( 0 === (int) $tag->count ) : ?>
 										<button type="button" class="cmdroom-tags-delete-btn" data-cr-tags-delete-one><?php esc_html_e( 'Eliminar', 'command-room' ); ?></button>
 									<?php endif; ?>
@@ -409,6 +494,28 @@ class Cmdroom_Tags_Settings {
 					</tbody>
 				</table>
 			<?php endif; ?>
+		</div>
+
+		<div class="cr-dialog-backdrop" data-cr-tags-dialog>
+			<div class="cr-dialog" role="dialog" aria-modal="true">
+				<h2 class="cr-dialog-title"><?php esc_html_e( 'Metas de la etiqueta', 'command-room' ); ?></h2>
+				<p class="cmdroom-config-note"><?php esc_html_e( 'Vacío = usa la plantilla global de Metas → Tags para esta etiqueta.', 'command-room' ); ?></p>
+
+				<div class="cr-dialog-field">
+					<label class="cr-label" for="cmdroom-tags-dialog-title"><?php esc_html_e( 'Título', 'command-room' ); ?></label>
+					<input type="text" id="cmdroom-tags-dialog-title" class="cr-input" data-cr-tags-dialog-title />
+				</div>
+
+				<div class="cr-dialog-field">
+					<label class="cr-label" for="cmdroom-tags-dialog-desc"><?php esc_html_e( 'Meta descripción', 'command-room' ); ?></label>
+					<textarea id="cmdroom-tags-dialog-desc" class="cr-input cmdroom-ia-textarea" rows="3" data-cr-tags-dialog-desc></textarea>
+				</div>
+
+				<div class="cr-dialog-actions">
+					<button type="button" class="cr-btn-secondary" data-cr-close-dialog><?php esc_html_e( 'Cancelar', 'command-room' ); ?></button>
+					<button type="button" class="cr-btn-primary" data-cr-tags-dialog-save><?php esc_html_e( 'Guardar', 'command-room' ); ?></button>
+				</div>
+			</div>
 		</div>
 		<?php
 	}

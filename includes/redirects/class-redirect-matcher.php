@@ -66,8 +66,23 @@ class Cmdroom_Redirect_Matcher {
 			exit;
 		}
 
-		wp_redirect( $row['destination'], $code );
+		wp_redirect( self::resolve_destination( $row, $path ), $code );
 		exit;
+	}
+
+	/**
+	 * En una regla "exacto" el destino siempre es el texto tal cual. En
+	 * "regex" además admite $1, $2... para reusar lo capturado por el
+	 * patrón de origen -- así una carpeta entera puede redirigir a otra
+	 * conservando la subruta (origen "^carpeta-vieja/(.*)$", destino
+	 * "/carpeta-nueva/$1") en vez de mandar todo a una única URL fija.
+	 */
+	private static function resolve_destination( $row, $path ) {
+		if ( 'regex' !== $row['source_type'] ) {
+			return $row['destination'];
+		}
+		$resolved = @preg_replace( '#' . $row['source'] . '#i', $row['destination'], $path );
+		return null === $resolved ? $row['destination'] : $resolved;
 	}
 
 	private static function normalize( $path ) {

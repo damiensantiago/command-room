@@ -66,35 +66,77 @@ class Cmdroom_Code_Injection {
 		}
 	}
 
-	public static function render_page() {
+	/**
+	 * Antes era render_page() con su propio <div class="wrap">/H1 — desde
+	 * que "Inyección" pasó a ser una pestaña de "Código"
+	 * (Cmdroom_Code_Admin), el wrap y el H1 los pinta el cascarón, esta
+	 * clase solo aporta el contenido de su pestaña.
+	 */
+	public static function render_tab() {
 		$opts = self::get_options();
 		?>
-		<div class="wrap cmdroom-wrap">
-			<h1><?php esc_html_e( 'Inyección de código', 'command-room' ); ?></h1>
+		<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
+			<div class="notice notice-success"><p><?php esc_html_e( 'Guardado.', 'command-room' ); ?></p></div>
+		<?php endif; ?>
 
-			<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
-				<div class="notice notice-success"><p><?php esc_html_e( 'Guardado.', 'command-room' ); ?></p></div>
-			<?php endif; ?>
-
-			<div class="notice notice-warning">
-				<p><?php esc_html_e( 'Esto se imprime tal cual en el sitio, sin ningún filtro — solo un administrador puede escribir aquí. Pega solo código en el que confíes (verificación de Search Console/Bing, analítica, etc.).', 'command-room' ); ?></p>
-			</div>
-
+		<div class="cr-card cmdroom-code-injection-card">
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'cmdroom_save_code_injection' ); ?>
 				<input type="hidden" name="action" value="cmdroom_save_code_injection" />
 
-				<h2><?php esc_html_e( 'Antes de &lt;/head&gt;', 'command-room' ); ?></h2>
-				<p class="description"><?php esc_html_e( 'Se imprime al final de wp_head — después de las metas y el schema de Command Room.', 'command-room' ); ?></p>
-				<textarea name="cmdroom_head_code" rows="10" class="large-text code" style="max-width:800px;" placeholder="<meta name=&quot;google-site-verification&quot; content=&quot;...&quot; />"><?php echo esc_textarea( $opts['head'] ); ?></textarea>
+				<div class="cmdroom-md-block">
+					<h2><?php esc_html_e( 'Antes de &lt;/head&gt;', 'command-room' ); ?></h2>
+					<p class="description"><?php esc_html_e( 'Se imprime al final de wp_head — después de las metas y el schema de Command Room.', 'command-room' ); ?></p>
+					<?php self::render_code_block( 'cmdroom_head_code', $opts['head'] ); ?>
+				</div>
 
-				<h2><?php esc_html_e( 'Antes de &lt;/body&gt;', 'command-room' ); ?></h2>
-				<p class="description"><?php esc_html_e( 'Se imprime al final de wp_footer.', 'command-room' ); ?></p>
-				<textarea name="cmdroom_footer_code" rows="10" class="large-text code" style="max-width:800px;" placeholder="<script>...</script>"><?php echo esc_textarea( $opts['footer'] ); ?></textarea>
+				<div class="cmdroom-md-block">
+					<h2><?php esc_html_e( 'Antes de &lt;/body&gt;', 'command-room' ); ?></h2>
+					<p class="description"><?php esc_html_e( 'Se imprime al final de wp_footer.', 'command-room' ); ?></p>
+					<?php self::render_code_block( 'cmdroom_footer_code', $opts['footer'] ); ?>
+				</div>
 
-				<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
+				<?php submit_button( __( 'Guardar', 'command-room' ), 'cr-btn-primary', 'submit', false ); ?>
 			</form>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Mismo bloque "terminal" (barra estilo macOS + contenteditable con
+	 * textarea oculta real) que Metas/Datos estructurados -- ver
+	 * Cmdroom_Meta_Settings::render_code_block(). Se duplica en vez de
+	 * reusar esa clase porque no hay una relación natural entre ambas; el
+	 * enganche compartido es puramente visual (misma CSS/JS, ver
+	 * assets/js/meta-editor.js:initEditor(), que engancha cualquier
+	 * .cmdroom-md-code de la página sin necesidad de JS propio aquí).
+	 */
+	private static function render_code_block( $name, $html ) {
+		?>
+		<div class="cmdroom-md-terminal">
+			<div class="cmdroom-md-terminal-bar">
+				<span class="cmdroom-md-dot cmdroom-md-dot-red"></span>
+				<span class="cmdroom-md-dot cmdroom-md-dot-amber"></span>
+				<span class="cmdroom-md-dot cmdroom-md-dot-green"></span>
+			</div>
+			<div class="cmdroom-md-terminal-body">
+				<div class="cmdroom-md-code" contenteditable="true" spellcheck="false"><?php echo self::render_highlighted( $html ); // phpcs:ignore -- ya escapado dentro ?></div>
+				<textarea name="<?php echo esc_attr( $name ); ?>" class="cmdroom-md-code-source"><?php echo esc_textarea( $html ); ?></textarea>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * No hay variables %algo% en este módulo (es HTML/JS libre, no metas),
+	 * pero se reusa el mismo resaltado que Metas para que el primer
+	 * renderizado en servidor sea idéntico a lo que meta-editor.js produce
+	 * en el primer 'input' -- si alguna vez se pegara un literal "%algo%"
+	 * se resaltaría en naranja como en cualquier otra pantalla, sin efecto
+	 * en el valor guardado.
+	 */
+	private static function render_highlighted( $html ) {
+		$escaped = esc_html( $html );
+		return preg_replace( '/(%[a-z_]+%)/i', '<span class="cmdroom-md-var">$1</span>', $escaped );
 	}
 }

@@ -5,6 +5,16 @@
  * Scope: solo .cmdroom-metadata-wrap, no afecta a otras pantallas del plugin.
  */
 
+/*
+ * La tipografía "Archivo" se declaraba en font-family pero nunca se
+ * cargaba -- el navegador caía siempre a system-ui/San Francisco.
+ * Mismo @import que usa el propio sistema de diseño "Modernist"
+ * (styles.css del handoff): pesos 400/500/600/700/800 cubren todo lo
+ * que usan las hojas de este plugin (cuerpo, botones/th en 600,
+ * títulos en 700, valores destacados hasta 800).
+ */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap');
+
 .cmdroom-metadata-wrap {
 	--cmdroom-bg: #f3f2f2;
 	--cmdroom-text: #201e1d;
@@ -21,6 +31,7 @@
 	--cmdroom-dot-red: #ff5f56;
 	--cmdroom-dot-amber: #ffbd2e;
 	--cmdroom-dot-green: #27c93f;
+	--cr-table-head: #111827;
 
 	background: var(--cmdroom-bg);
 	color: var(--cmdroom-text);
@@ -36,11 +47,14 @@
 	width: 100%;
 	text-align: center;
 	font-family: inherit;
-	font-weight: 700;
-	font-size: 38px;
-	letter-spacing: -0.01em;
+	font-weight: 800 !important;
+	font-size: 48px !important;
+	line-height: 0.95;
+	letter-spacing: -0.02em;
 	color: var(--cmdroom-text);
-	margin: 0 0 16px;
+	margin: 0 0 20px;
+	padding-bottom: 14px;
+	border-bottom: 4px solid var(--cmdroom-text);
 }
 
 .cmdroom-md-container {
@@ -139,6 +153,15 @@
 	font-size: 12.5px;
 	color: var(--cmdroom-text-muted);
 	margin-bottom: 6px;
+}
+
+/* En Metas y Datos estructurados esta etiqueta repite el nombre de la
+   pestaña activa justo encima (Home/Categorías/...) -- se oculta solo
+   aquí para subir el terminal. En Robots.txt el mismo label lleva texto
+   propio ("Contenido de /robots.txt") y debe seguir viéndose. */
+.cmdroom-meta-wrap .cmdroom-md-block-label,
+.cmdroom-schema-wrap .cmdroom-md-block-label {
+	display: none;
 }
 
 .cmdroom-md-terminal {

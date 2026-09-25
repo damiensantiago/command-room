@@ -102,7 +102,7 @@ class Cmdroom_Server_Admin {
 			<h1 class="cmdroom-md-h1"><?php esc_html_e( 'Servidor', 'command-room' ); ?></h1>
 
 			<div class="cmdroom-md-container">
-				<p class="cmdroom-md-intro"><?php esc_html_e( 'Redirecciones, registro de errores 404 y normalización de URLs. Todo se resuelve en PHP antes de cargar la plantilla — sin tocar .htaccess.', 'command-room' ); ?></p>
+				<p class="cmdroom-md-intro"><?php esc_html_e( 'Gestiona tus redirecciones, los errores, la configuración de tus urls', 'command-room' ); ?></p>
 
 				<nav class="cr-tabs">
 					<?php foreach ( $labels as $tab => $label ) : ?>

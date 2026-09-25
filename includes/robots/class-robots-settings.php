@@ -432,9 +432,9 @@ class Cmdroom_Robots_Settings {
 							<?php esc_html_e( 'el servidor lo sirve directamente y este control no tendrá efecto hasta que se borre o renombre ese archivo. No lo he tocado: pídemelo explícitamente cuando quieras que lo haga.', 'command-room' ); ?>
 						</p>
 					</div>
-				<?php else : ?>
-					<p class="cmdroom-md-intro"><?php esc_html_e( 'No hay robots.txt físico — WordPress sirve este contenido de forma virtual en /robots.txt.', 'command-room' ); ?></p>
 				<?php endif; ?>
+
+				<p class="cmdroom-md-intro"><?php esc_html_e( 'Configura todas las reglas para bloquear archivos, carpetas, urls concretas o bots de IA:', 'command-room' ); ?></p>
 
 				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 					<?php wp_nonce_field( 'cmdroom_save_robots' ); ?>

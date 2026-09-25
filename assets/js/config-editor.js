@@ -1,10 +1,9 @@
 /**
  * Command Room — pantalla "Configuración" (Archivos y taxonomías +
- * Breadcrumbs + Auto-Image SEO + Herramientas). Tres piezas de cliente:
- * vista previa en vivo de Breadcrumbs, inserción de variables + vista
- * previa de Auto-Image SEO, y la llamada REST de Herramientas. Las
- * pestañas en sí son enlaces normales (recargan la página) — igual que en
- * "Servidor".
+ * Breadcrumbs + Auto-Image SEO + Herramientas). Dos piezas de cliente:
+ * vista previa en vivo de Breadcrumbs, e inserción de variables + vista
+ * previa de Auto-Image SEO. Las pestañas en sí son enlaces normales
+ * (recargan la página) — igual que en "Servidor".
  */
 ( function () {
 	'use strict';
@@ -12,6 +11,29 @@
 	function toggleIsOn( scope, selector ) {
 		var btn = scope.querySelector( selector );
 		return btn ? btn.classList.contains( 'is-on' ) : true;
+	}
+
+	/**
+	 * Los botones [data-cr-toggle] (IA, Breadcrumbs, Auto-Image SEO) son
+	 * type="button" con un checkbox oculto dentro -- sin JS que los conecte
+	 * no hacen nada al clic. servidor-editor.js ya trae esta misma lógica
+	 * (initDeferredToggles), pero solo se activa dentro de
+	 * .cmdroom-servidor-wrap; aquí hace falta la misma pieza para
+	 * .cmdroom-config-wrap. Bug real reportado por Damien 2026-09-25: los
+	 * toggles de llms.txt/Markdown en la pestaña IA no se podían
+	 * activar/desactivar a mano.
+	 */
+	function initToggles( wrap ) {
+		wrap.querySelectorAll( '[data-cr-toggle]' ).forEach( function ( toggle ) {
+			var input = toggle.querySelector( 'input' );
+			toggle.addEventListener( 'click', function () {
+				var next = ! toggle.classList.contains( 'is-on' );
+				toggle.classList.toggle( 'is-on', next );
+				if ( input ) {
+					input.checked = next;
+				}
+			} );
+		} );
 	}
 
 	function initCrumbsPreview( wrap ) {
@@ -110,50 +132,14 @@
 		render();
 	}
 
-	function initToolsPreview( wrap ) {
-		var btn      = wrap.querySelector( '[data-cr-preview-btn]' );
-		var input    = wrap.querySelector( '[data-cr-preview-url]' );
-		var result   = wrap.querySelector( '[data-cr-preview-result]' );
-		var notfound = wrap.querySelector( '[data-cr-preview-notfound]' );
-		if ( ! btn || ! input || ! result || 'undefined' === typeof cmdroomConfig ) {
-			return;
-		}
-
-		function run() {
-			result.hidden   = true;
-			notfound.hidden = true;
-			fetch( cmdroomConfig.restUrl + '?url=' + encodeURIComponent( input.value ), {
-				headers: { 'X-WP-Nonce': cmdroomConfig.nonce }
-			} )
-				.then( function ( r ) { return r.json(); } )
-				.then( function ( data ) {
-					if ( data && data.found ) {
-						result.textContent = data.text;
-						result.hidden = false;
-					} else {
-						notfound.hidden = false;
-					}
-				} )
-				.catch( function () { notfound.hidden = false; } );
-		}
-
-		btn.addEventListener( 'click', run );
-		input.addEventListener( 'keydown', function ( e ) {
-			if ( 'Enter' === e.key ) {
-				e.preventDefault();
-				run();
-			}
-		} );
-	}
-
 	document.addEventListener( 'DOMContentLoaded', function () {
 		var wrap = document.querySelector( '.cmdroom-config-wrap' );
 		if ( ! wrap ) {
 			return;
 		}
 
+		initToggles( wrap );
 		initCrumbsPreview( wrap );
 		initImageSeoPreview( wrap );
-		initToolsPreview( wrap );
 	} );
 } )();

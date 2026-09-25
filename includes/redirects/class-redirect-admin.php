@@ -45,9 +45,10 @@ class Cmdroom_Redirect_Admin {
 	}
 
 	/**
-	 * "Salida en el sitio" vive en Command Room → General, mismo criterio
-	 * que Metas/Datos estructurados/Sitemaps desde sus rediseños respectivos
-	 * — la pantalla propia del módulo ya no la incluye.
+	 * "Salida en el sitio" vive en Configuración → Herramientas (ver
+	 * Cmdroom_Config_Admin::render_salida_tab()), mismo criterio que
+	 * Metas/Datos estructurados/Sitemaps — la pantalla propia del módulo
+	 * ya no la incluye.
 	 */
 	public static function render_general_section() {
 		$live = self::is_live_output_enabled();
@@ -192,10 +193,6 @@ class Cmdroom_Redirect_Admin {
 					<?php endforeach; ?>
 				</ul>
 			</div>
-		<?php endif; ?>
-
-		<?php if ( ! self::is_live_output_enabled() ) : ?>
-			<div class="notice notice-warning inline"><p><?php esc_html_e( 'La salida en el sitio está apagada (Command Room → General): las reglas se guardan pero no redirigen de verdad todavía.', 'command-room' ); ?></p></div>
 		<?php endif; ?>
 
 		<div class="cmdroom-servidor-toolbar">
@@ -348,6 +345,16 @@ class Cmdroom_Redirect_Admin {
 							<button type="button" class="cr-seg-opt" data-value="regex"><?php esc_html_e( 'Regex', 'command-room' ); ?></button>
 						</div>
 						<input type="hidden" name="source_type" class="cr-seg-value" value="exact" />
+
+						<details class="cr-dialog-help">
+							<summary><?php esc_html_e( '¿Cómo funciona Regex?', 'command-room' ); ?></summary>
+							<p><?php esc_html_e( '"Exacto" redirige una URL concreta a otra. "Regex" usa un patrón para mover una carpeta entera a otra conservando el resto de la ruta, sin crear una regla por cada página:', 'command-room' ); ?></p>
+							<p>
+								<?php esc_html_e( 'Origen:', 'command-room' ); ?> <code>^carpeta-vieja/(.*)$</code><br />
+								<?php esc_html_e( 'Destino:', 'command-room' ); ?> <code>/carpeta-nueva/$1</code>
+							</p>
+							<p><?php esc_html_e( 'Con esa regla, /carpeta-vieja/pagina-x pasa a /carpeta-nueva/pagina-x automáticamente — el $1 recupera lo que capturaron los paréntesis del origen.', 'command-room' ); ?></p>
+						</details>
 					</div>
 
 					<div class="cr-dialog-field">

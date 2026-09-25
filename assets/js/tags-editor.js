@@ -89,7 +89,105 @@
 						showStatus( res.data && res.data.message ? res.data.message : 'Error al eliminar.', true );
 					}
 				} );
+				return;
 			}
+
+			var createBtn = e.target.closest( '[data-cr-tags-create]' );
+			if ( createBtn ) {
+				var nameField = wrap.querySelector( '[data-cr-tags-create-name]' );
+				var name      = nameField.value.trim();
+				if ( ! name ) {
+					showStatus( 'Escribe un nombre para la etiqueta.', true );
+					return;
+				}
+				createBtn.disabled = true;
+				post( 'cmdroom_tags_create', { name: name } ).then( function ( res ) {
+					createBtn.disabled = false;
+					if ( res.success ) {
+						// Recarga: el listado nuevo necesita una fila más en el
+						// <select> de "Fusionar en..." de TODAS las filas
+						// existentes, no solo una fila nueva propia -- más simple
+						// recargar que reconstruir esas opciones a mano en JS.
+						window.location.reload();
+					} else {
+						showStatus( res.data && res.data.message ? res.data.message : 'Error al crear.', true );
+					}
+				} );
+			}
+		} );
+
+		/* — Diálogo "Metas de la etiqueta" — */
+
+		var dialog = document.querySelector( '[data-cr-tags-dialog]' );
+		if ( ! dialog ) {
+			return;
+		}
+
+		var dialogTitleField = dialog.querySelector( '[data-cr-tags-dialog-title]' );
+		var dialogDescField  = dialog.querySelector( '[data-cr-tags-dialog-desc]' );
+		var dialogSaveBtn    = dialog.querySelector( '[data-cr-tags-dialog-save]' );
+		var activeConfigureBtn = null;
+
+		function openDialog( trigger ) {
+			activeConfigureBtn = trigger;
+			dialogTitleField.value = trigger.getAttribute( 'data-title' ) || '';
+			dialogDescField.value  = trigger.getAttribute( 'data-description' ) || '';
+			dialog.classList.add( 'is-open' );
+			dialogTitleField.focus();
+		}
+
+		function closeDialog() {
+			dialog.classList.remove( 'is-open' );
+			activeConfigureBtn = null;
+		}
+
+		wrap.addEventListener( 'click', function ( e ) {
+			var configureBtn = e.target.closest( '[data-cr-tags-configure]' );
+			if ( configureBtn ) {
+				openDialog( configureBtn );
+			}
+		} );
+
+		dialog.querySelectorAll( '[data-cr-close-dialog]' ).forEach( function ( btn ) {
+			btn.addEventListener( 'click', closeDialog );
+		} );
+
+		dialog.addEventListener( 'click', function ( e ) {
+			if ( e.target === dialog ) {
+				closeDialog();
+			}
+		} );
+
+		document.addEventListener( 'keydown', function ( e ) {
+			if ( 'Escape' === e.key && dialog.classList.contains( 'is-open' ) ) {
+				closeDialog();
+			}
+		} );
+
+		dialogSaveBtn.addEventListener( 'click', function () {
+			if ( ! activeConfigureBtn ) {
+				return;
+			}
+			var row = activeConfigureBtn.closest( '.cmdroom-tags-row' );
+			var title = dialogTitleField.value.trim();
+			var desc  = dialogDescField.value.trim();
+
+			dialogSaveBtn.disabled = true;
+			post( 'cmdroom_tags_save_meta', { term_id: row.getAttribute( 'data-term-id' ), title: title, description: desc } ).then( function ( res ) {
+				dialogSaveBtn.disabled = false;
+				if ( res.success ) {
+					activeConfigureBtn.setAttribute( 'data-title', title );
+					activeConfigureBtn.setAttribute( 'data-description', desc );
+					var pill = row.querySelector( '[data-cr-tags-custom-pill]' );
+					if ( pill ) {
+						pill.hidden = ! res.data.has_custom;
+					}
+					showStatus( res.data.message, false );
+					closeDialog();
+				} else {
+					showStatus( res.data && res.data.message ? res.data.message : 'Error al guardar.', true );
+				}
+			} );
 		} );
 	} );
 

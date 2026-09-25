@@ -25,7 +25,7 @@ class Cmdroom_Meta_Variables {
 	 * Nombres de variable que son una URL (llevan esc_url() en vez de
 	 * esc_attr() cuando $escape = true).
 	 */
-	const URL_VARS = array( 'url', 'image', 'og_image' );
+	const URL_VARS = array( 'url', 'image', 'og_image', 'favicon' );
 
 	/**
 	 * @param string $template Plantilla con %variables%.
@@ -91,8 +91,13 @@ class Cmdroom_Meta_Variables {
 		$author = isset( $context['author'] ) ? $context['author'] : null;
 
 		$vars = array(
-			'sitename'     => get_bloginfo( 'name' ),
-			'sitedesc'     => get_bloginfo( 'description' ),
+			// %sitename%/%sitedesc%/%charset%/%og_locale% (más abajo): desde
+			// la pestaña "Variables" (2026-09-25) admiten un override propio
+			// del plugin -- Cmdroom_Variables_Settings::resolve_*() cae a
+			// get_bloginfo()/get_locale() si no se ha rellenado nada, mismo
+			// comportamiento de siempre en un sitio que no la ha tocado.
+			'sitename'     => class_exists( 'Cmdroom_Variables_Settings' ) ? Cmdroom_Variables_Settings::resolve_sitename() : get_bloginfo( 'name' ),
+			'sitedesc'     => class_exists( 'Cmdroom_Variables_Settings' ) ? Cmdroom_Variables_Settings::resolve_sitedesc() : get_bloginfo( 'description' ),
 			'sep'          => Cmdroom_Meta_Settings::get_separator(),
 			'currentyear'  => date_i18n( 'Y' ),
 			'page'         => self::current_page_suffix(),
@@ -101,17 +106,49 @@ class Cmdroom_Meta_Variables {
 			// siguen incluyendo por compatibilidad -- WordPress ya imprime su
 			// propio <meta charset> nativo, este token es solo para quien
 			// quiera un segundo tag http-equiv explícito en su bloque.
-			'charset'      => get_bloginfo( 'charset' ),
+			'charset'      => class_exists( 'Cmdroom_Variables_Settings' ) ? Cmdroom_Variables_Settings::resolve_charset() : get_bloginfo( 'charset' ),
 			// %organization%: el nombre legal/de negocio de Datos
 			// estructurados (Ajustes → Datos estructurados → Negocio), NO
 			// necesariamente igual a %sitename% (p. ej. "Dripbase, S.L." vs
 			// "DripBase"). Cae a %sitename% si no hay negocio configurado.
 			'organization' => self::get_organization_name(),
+			// %favicon%: la imagen del Site Icon nativo de WordPress (Ajustes
+			// → General → Icono del sitio), pedido por Damien el 2026-09-24
+			// para poder poner sus propios <link rel="icon"> a mano en el
+			// bloque de <head> (WordPress ya imprime los suyos vía
+			// wp_site_icon(), esto es un segundo juego explícito). Un único
+			// archivo para todos los tamaños -- hoy solo hay subido un icono
+			// cuadrado de 512×512, sin recortes propios en 32/96/180; si
+			// algún día se suben tamaños distintos, aquí es donde se
+			// resolvería cada uno por separado.
+			'favicon'      => class_exists( 'Cmdroom_Variables_Settings' ) ? Cmdroom_Variables_Settings::resolve_favicon_url() : self::get_favicon_url(),
+			// %last_modified%: ISO 8601 de la publicación más reciente --
+			// pensado para article:modified_time/og:updated_time/DC.date.issued
+			// en Home, que no tiene una fecha propia de "modificado" al no
+			// ser un post. Cae a la hora actual si el sitio no tiene ningún
+			// post publicado todavía.
+			'last_modified' => self::get_last_modified_time( $author instanceof WP_User ? $author->ID : 0 ),
+			// %og_locale%: get_locale() ya devuelve el formato con guion bajo
+			// que espera Facebook/OG (es_ES), distinto del %schema_lang% de
+			// Datos estructurados (es-ES, formato HTML lang) -- no hay que
+			// convertir nada.
+			'og_locale'    => class_exists( 'Cmdroom_Variables_Settings' ) ? Cmdroom_Variables_Settings::resolve_og_locale() : get_locale(),
 			// Defaults -- se sobreescriben abajo según el contexto. Viven
 			// aquí para que un contexto sin rama propia (p. ej. un archivo
 			// de fecha, que no tiene plantilla de <head> en Metas) siga
 			// devolviendo claves válidas en vez de "no definida".
-			'keywords'    => '',
+			'keywords'       => '',
+			// %date_iso%/%date_modified_iso%: solo tienen sentido en un post
+			// real (article:published_time/modified_time, DC.date.issued) --
+			// se rellenan más abajo en la rama $post, vacías en el resto de
+			// contextos.
+			'date_iso'          => '',
+			'date_modified_iso' => '',
+			// %image_width%/%image_height%: dimensiones reales en píxeles de
+			// la imagen destacada -- igual que %date_iso%, solo se rellenan
+			// en la rama $post.
+			'image_width'       => '',
+			'image_height'      => '',
 		);
 
 		if ( $post instanceof WP_Post ) {
@@ -122,6 +159,12 @@ class Cmdroom_Meta_Variables {
 			$vars['author']       = $vars['author_name']; // alias: nombre de variable de Rank Math para el autor
 			$vars['date']         = get_the_date( '', $post );
 			$vars['category']     = self::get_primary_category_name( $post );
+			$vars['date_iso']          = get_post_time( 'c', true, $post );
+			$vars['date_modified_iso'] = get_post_modified_time( 'c', true, $post );
+
+			$dims                  = self::get_image_dimensions( $post );
+			$vars['image_width']   = $dims['width'];
+			$vars['image_height']  = $dims['height'];
 
 			// %keywords%: tags del post: si no tiene, cae a su categoría
 			// principal -- así nunca sale vacío en un post con al menos
@@ -159,6 +202,25 @@ class Cmdroom_Meta_Variables {
 			$vars['excerpt']          = $excerpt;
 			$vars['excerpt_only']     = $excerpt;
 			$vars['keywords']         = $term->name;
+
+			// Override por término (mismo criterio que title_override/
+			// excerpt_override para posts, más arriba): Cmdroom_Meta_Resolver::
+			// resolve_for_term() ya los inyecta resueltos en el contexto.
+			// La plantilla real de Metas → Tags usa %term_title% (y su alias
+			// %term%) para el <title>/OG/Twitter, NO %title% -- hay que pisar
+			// las tres o el override no se nota en el <title> aunque sí en
+			// %excerpt% (bug real encontrado el 2026-09-25 verificando en
+			// vivo: la descripción cambiaba pero el título seguía siendo el
+			// de la plantilla global).
+			if ( isset( $context['title_override'] ) && '' !== $context['title_override'] ) {
+				$vars['title']      = $context['title_override'];
+				$vars['term_title'] = $context['title_override'];
+				$vars['term']       = $context['title_override'];
+			}
+			if ( isset( $context['excerpt_override'] ) && '' !== $context['excerpt_override'] ) {
+				$vars['excerpt']      = $context['excerpt_override'];
+				$vars['excerpt_only'] = $context['excerpt_override'];
+			}
 		} elseif ( ! empty( $context['is_home'] ) ) {
 			$vars['title']        = get_bloginfo( 'name' );
 			$vars['excerpt']      = get_bloginfo( 'description' );
@@ -237,6 +299,63 @@ class Cmdroom_Meta_Variables {
 	}
 
 	/**
+	 * Site Icon nativo de WordPress -- pública porque también la usa
+	 * Cmdroom_Variables_Settings::resolve_favicon_url() como fallback
+	 * cuando no hay override propio del plugin, para no duplicar el cálculo.
+	 */
+	public static function get_favicon_url() {
+		$site_icon_id = get_option( 'site_icon' );
+		if ( ! $site_icon_id ) {
+			return '';
+		}
+		$src = wp_get_attachment_image_src( $site_icon_id, 'full' );
+		return $src ? $src[0] : '';
+	}
+
+	/**
+	 * Ancho/alto reales de la imagen destacada, en píxeles -- para
+	 * og:image:width/height y twitter:image:width/height, que Facebook/X
+	 * recomiendan incluir para acelerar el renderizado de la tarjeta social
+	 * (evita que el crawler tenga que descargar la imagen para medirla).
+	 * Vacío si el post no tiene imagen destacada.
+	 */
+	private static function get_image_dimensions( WP_Post $post ) {
+		if ( has_post_thumbnail( $post ) ) {
+			$src = wp_get_attachment_image_src( get_post_thumbnail_id( $post ), 'full' );
+			if ( $src ) {
+				return array( 'width' => (string) $src[1], 'height' => (string) $src[2] );
+			}
+		}
+		return array( 'width' => '', 'height' => '' );
+	}
+
+	/**
+	 * $author_id > 0 (página de autor, pedido por Damien 2026-09-24) acota a
+	 * la publicación más reciente DE ESE AUTOR -- más preciso que la más
+	 * reciente del sitio entero para article:modified_time/og:updated_time
+	 * en esa página en concreto. Sin autor (Home, el resto de contextos),
+	 * sigue siendo la más reciente de todo el sitio.
+	 */
+	private static function get_last_modified_time( $author_id = 0 ) {
+		$args = array(
+			'post_type'      => 'post',
+			'post_status'    => 'publish',
+			'posts_per_page' => 1,
+			'orderby'        => 'modified',
+			'order'          => 'DESC',
+			'fields'         => 'ids',
+		);
+		if ( $author_id ) {
+			$args['author'] = $author_id;
+		}
+		$latest = get_posts( $args );
+		if ( empty( $latest ) ) {
+			return gmdate( 'c' );
+		}
+		return get_post_modified_time( 'c', true, $latest[0] );
+	}
+
+	/**
 	 * Catálogo de variables soportadas — fuente única de verdad para el
 	 * glosario en el admin. Si se añade una variable a build_vars(), hay
 	 * que añadirla aquí también o no saldrá documentada.
@@ -265,6 +384,13 @@ class Cmdroom_Meta_Variables {
 			array( 'tag' => '%image%', 'label' => __( 'Imagen destacada', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'La imagen destacada del post. Si no hay (o el contexto no es un post), cae al logo del negocio de Datos estructurados; vacío si tampoco hay logo. Pensada para og:image/twitter:image.', 'command-room' ) ),
 			array( 'tag' => '%og_image%', 'label' => __( 'Imagen destacada (alias)', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Igual que %image% — es el nombre de variable que usa Rank Math.', 'command-room' ) ),
 			array( 'tag' => '%keywords%', 'label' => __( 'Palabras clave', 'command-room' ), 'contexts' => array( 'post', 'term' ), 'description' => __( 'En un post, sus etiquetas separadas por comas (si no tiene, su categoría principal). En un término, su propio nombre. Vacío en home/autor. Pensada para <meta name="keywords">.', 'command-room' ) ),
+			array( 'tag' => '%favicon%', 'label' => __( 'Favicon', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'La imagen del Site Icon (Ajustes → General → Icono del sitio). Vacío si no hay ninguno configurado. Pensada para tus propios <link rel="icon">.', 'command-room' ) ),
+			array( 'tag' => '%last_modified%', 'label' => __( 'Última modificación', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'Fecha ISO 8601 de la publicación más reciente. En Home, la más reciente de todo el sitio; en la página de autor, la más reciente DE ESE AUTOR. Pensada para article:modified_time/og:updated_time/DC.date.issued donde no hay un post propio.', 'command-room' ) ),
+			array( 'tag' => '%date_iso%', 'label' => __( 'Fecha de publicación (ISO 8601)', 'command-room' ), 'contexts' => array( 'post' ), 'description' => __( 'Igual que %date% pero en formato ISO 8601, para article:published_time/DC.date.issued.', 'command-room' ) ),
+			array( 'tag' => '%date_modified_iso%', 'label' => __( 'Fecha de modificación (ISO 8601)', 'command-room' ), 'contexts' => array( 'post' ), 'description' => __( 'Fecha de la última modificación del post en formato ISO 8601, para article:modified_time/og:updated_time.', 'command-room' ) ),
+			array( 'tag' => '%og_locale%', 'label' => __( 'Idioma (formato OG)', 'command-room' ), 'contexts' => array( 'post', 'term', 'home', 'author_archive' ), 'description' => __( 'get_locale() -- p. ej. "es_ES", el formato con guion bajo que espera og:locale (distinto de %schema_lang%, que usa guion normal).', 'command-room' ) ),
+			array( 'tag' => '%image_width%', 'label' => __( 'Ancho de la imagen destacada', 'command-room' ), 'contexts' => array( 'post' ), 'description' => __( 'En píxeles, para og:image:width/twitter:image:width. Vacío si no hay imagen destacada.', 'command-room' ) ),
+			array( 'tag' => '%image_height%', 'label' => __( 'Alto de la imagen destacada', 'command-room' ), 'contexts' => array( 'post' ), 'description' => __( 'En píxeles, para og:image:height/twitter:image:height. Vacío si no hay imagen destacada.', 'command-room' ) ),
 		);
 	}
 }

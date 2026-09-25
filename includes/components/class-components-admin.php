@@ -7,7 +7,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Pantalla "Componentes" — rediseño 2026-09-23 sobre el handoff
  * "Componentes + Ticker". Dos vistas: una pestaña por componente activo
  * (con Ticker como único funcional, el resto placeholder "Próximamente"),
- * y "Ver todos" con el interruptor de activación de los 13.
+ * y "Ver todos" con el interruptor de activación de los 12 (el "Carrusel
+ * de tags" del handoff original se retiró el 2026-09-25 -- lo cubre el
+ * "Carruseles por temáticas" que reemplazó a "Carrusel de autores").
  *
  * Slug fijo `command-room-componentes` (lo pide el handoff, en vez del
  * derivado `cmdroom-components` que tenían el resto de pantallas nuevas) —
@@ -44,23 +46,22 @@ class Cmdroom_Components_Admin {
 	}
 
 	/**
-	 * Catálogo de los 13 componentes, en el orden del handoff. status:
+	 * Catálogo de los 12 componentes, en el orden del handoff. status:
 	 * 'ready' (tiene clase propia) o 'planned' (placeholder). Claves de tab
 	 * literales del handoff (?tab=reco, no "content-carousel").
 	 */
 	const CATALOG = array(
 		'ticker'   => array( 'label' => 'Ticker', 'desc' => 'Barra de mensajes en movimiento debajo del menú: automáticos, configurados o mixtos.', 'status' => 'ready', 'default_enabled' => true ),
-		'reco'     => array( 'label' => 'Carrusel de recomendación de contenidos', 'desc' => 'Carrusel de entradas relacionadas al final del artículo, para enlazado interno y tiempo en página.', 'status' => 'planned', 'default_enabled' => true ),
+		'reco'     => array( 'label' => 'Carrusel recirculación', 'desc' => 'Carrusel de entradas relacionadas al final del artículo, para enlazado interno y tiempo en página.', 'status' => 'planned', 'default_enabled' => true ),
 		'htmlmap'  => array( 'label' => 'Sitemap HTML', 'desc' => 'Página navegable con toda la estructura del sitio, pensada para usuarios y para rastreo.', 'status' => 'planned', 'default_enabled' => true ),
-		'tags'     => array( 'label' => 'Carrusel de tags', 'desc' => 'Etiquetas del artículo en formato carrusel, enlazadas a sus archivos.', 'status' => 'planned', 'default_enabled' => true ),
-		'author'   => array( 'label' => 'Módulo completo de autor', 'desc' => 'Imagen, descripción y contenidos relacionados del autor. Se puede colocar arriba y abajo del artículo. Refuerza E-E-A-T.', 'status' => 'planned', 'default_enabled' => true ),
-		'biblio'   => array( 'label' => 'Bibliografía', 'desc' => 'Lista de fuentes y referencias citadas al final del artículo.', 'status' => 'planned', 'default_enabled' => true ),
+		'author'   => array( 'label' => 'Módulo de autor', 'desc' => 'Imagen, descripción y contenidos relacionados del autor. Se puede colocar arriba y abajo del artículo. Refuerza E-E-A-T.', 'status' => 'planned', 'default_enabled' => true ),
+		'biblio'   => array( 'label' => 'Fuentes', 'desc' => 'Lista de fuentes y referencias citadas al final del artículo.', 'status' => 'planned', 'default_enabled' => true ),
 		'shorts'   => array( 'label' => 'Carrusel de shorts', 'desc' => 'Carrusel de vídeos cortos verticales incrustados en el contenido.', 'status' => 'planned', 'default_enabled' => false ),
 		'reviews'  => array( 'label' => 'Carrusel de reviews en Google', 'desc' => 'Reseñas de tu ficha de Google Business en formato carrusel.', 'status' => 'planned', 'default_enabled' => false ),
-		'authors'  => array( 'label' => 'Carrusel de autores', 'desc' => 'Equipo editorial del sitio, cada autor enlazado a su página.', 'status' => 'planned', 'default_enabled' => false ),
+		'authors'  => array( 'label' => 'Carruseles por temáticas', 'desc' => 'Creación de carruseles de tags, autores o categorías según tus necesidades.', 'status' => 'planned', 'default_enabled' => false ),
 		'faq'      => array( 'label' => 'Preguntas frecuentes', 'desc' => 'Bloque de preguntas y respuestas con su FAQPage en el schema.', 'status' => 'planned', 'default_enabled' => false ),
 		'tldr'     => array( 'label' => 'TLDR (En resumen)', 'desc' => 'Resumen breve al inicio del artículo con los puntos clave.', 'status' => 'planned', 'default_enabled' => false ),
-		'help'     => array( 'label' => 'Necesitas ayuda', 'desc' => 'Módulo pensado para blogs de ecommerce: al final o en mitad del artículo, lleva al lector a la ayuda de la tienda (contacto, WhatsApp, asesoramiento) y convierte tráfico informativo en venta.', 'status' => 'planned', 'default_enabled' => false ),
+		'help'     => array( 'label' => 'Conversión en blog', 'desc' => 'Módulo pensado para blogs de ecommerce: al final o en mitad del artículo, lleva al lector a la ayuda de la tienda (contacto, WhatsApp, asesoramiento) y convierte tráfico informativo en venta.', 'status' => 'planned', 'default_enabled' => false ),
 		'pricing'  => array( 'label' => 'Precios', 'desc' => 'Tabla de precios o planes incrustable en páginas y entradas.', 'status' => 'planned', 'default_enabled' => false ),
 	);
 
@@ -137,7 +138,7 @@ class Cmdroom_Components_Admin {
 
 	/**
 	 * tab por defecto: 'ticker' si está activo, si no el primer activo del
-	 * catálogo, si no 'all' (los 13 desactivados es un caso límite real:
+	 * catálogo, si no 'all' (los 12 desactivados es un caso límite real:
 	 * justo después de desactivarlos todos desde "Ver todos").
 	 */
 	private static function default_tab() {

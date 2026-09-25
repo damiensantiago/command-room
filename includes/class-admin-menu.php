@@ -117,16 +117,16 @@ class Cmdroom_Admin_Menu {
 			// a cmdroom_menu_visibility: si está desmarcado se registra con
 			// parent_slug vacío, lo que hace que WordPress cree la página
 			// igualmente (URL directa, capability, hook) pero no la cuelgue
-			// de ningún menú. "servidor" además se esconde si sus tres
-			// módulos (redirects/monitor404/cleanup) están ocultos a la vez.
+			// de ningún menú. "servidor"/"config" dependían también de que
+			// alguno de sus módulos fusionados (redirects/monitor404/cleanup,
+			// archives/breadcrumbs/image-seo/tools) estuviera visible -- esos
+			// ya no tienen checkbox propio en la tabla de Módulos (Damien
+			// 2026-09-24), así que ese chequeo siempre daba "ninguno visible"
+			// y escondía Servidor/Configuración en cuanto se guardaba el
+			// formulario, aunque su propia fila siguiera activada. Quitado --
+			// ahora dependen solo de su propio toggle, como cualquier otro.
 			$parent_slug = self::SLUG;
 			if ( 'general' !== $slug && empty( $visibility[ $slug ] ) ) {
-				$parent_slug = null;
-			}
-			if ( 'servidor' === $slug && ! self::any_server_module_visible( $visibility ) ) {
-				$parent_slug = null;
-			}
-			if ( 'config' === $slug && ! self::any_config_module_visible( $visibility ) ) {
 				$parent_slug = null;
 			}
 
@@ -188,33 +188,21 @@ class Cmdroom_Admin_Menu {
 		}
 	}
 
-	private static function any_server_module_visible( $visibility ) {
-		foreach ( self::MERGED_SERVER_SLUGS as $slug ) {
-			if ( ! empty( $visibility[ $slug ] ) ) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private static function any_config_module_visible( $visibility ) {
-		foreach ( self::MERGED_CONFIG_SLUGS as $slug ) {
-			if ( ! empty( $visibility[ $slug ] ) ) {
-				return true;
-			}
-		}
-		return false;
-	}
-
 	/**
 	 * Lista única de submenús — fuente de verdad tanto para el registro real
 	 * del menú como para la tabla de visibilidad en la página General.
 	 */
 	public static function get_submenus() {
+		// Orden pedido por Damien 2026-09-25 para el menú lateral: General,
+		// Metas, Datos estructurados, Sitemaps, Robots.txt, Servidor, Código,
+		// Variables, Componentes, Configuración. Los slugs fusionados
+		// (redirects/monitor404/cleanup, archives/breadcrumbs/image-seo/tools)
+		// no generan su propio add_submenu_page -- se quedan justo detrás de
+		// su pantalla contenedora (Servidor/Configuración) solo para que la
+		// tabla de Módulos de General los siga agrupando igual.
 		return array(
 			'general'      => __( 'General', 'command-room' ),
 			'metas'        => __( 'Metas', 'command-room' ),
-			'variables'    => __( 'Variables', 'command-room' ),
 			'schema'       => __( 'Datos estructurados', 'command-room' ),
 			'sitemaps'     => __( 'Sitemaps', 'command-room' ),
 			'robots'       => __( 'Robots.txt', 'command-room' ),
@@ -222,13 +210,14 @@ class Cmdroom_Admin_Menu {
 			'redirects'    => __( 'Servidor → Redirecciones', 'command-room' ),
 			'monitor404'   => __( 'Servidor → Monitor 404', 'command-room' ),
 			'cleanup'      => __( 'Servidor → Limpieza HTTP/permalinks', 'command-room' ),
-			'code'         => __( 'Inyección de código', 'command-room' ),
+			'code'         => __( 'Código', 'command-room' ),
+			'variables'    => __( 'Variables', 'command-room' ),
+			'components'   => __( 'Componentes', 'command-room' ),
 			'config'       => __( 'Configuración', 'command-room' ),
 			'archives'     => __( 'Configuración → Archivos y taxonomías', 'command-room' ),
 			'breadcrumbs'  => __( 'Configuración → Breadcrumbs', 'command-room' ),
 			'image-seo'    => __( 'Configuración → Auto-Image SEO', 'command-room' ),
 			'tools'        => __( 'Configuración → Herramientas', 'command-room' ),
-			'components'   => __( 'Componentes', 'command-room' ),
 		);
 	}
 
@@ -249,7 +238,7 @@ class Cmdroom_Admin_Menu {
 			'redirects'   => __( 'Gestor de reglas de redirección (301/302/307/410/451, exacto o regex). Pestaña de Servidor.', 'command-room' ),
 			'monitor404'  => __( 'Registro de URLs que devuelven 404 en el sitio, para detectar enlaces rotos. Pestaña de Servidor.', 'command-room' ),
 			'cleanup'     => __( 'HTTPS/www canónico, barra final, /category/, adjuntos, UTM y cabeceras. Pestaña de Servidor.', 'command-room' ),
-			'code'        => __( 'Inyección de fragmentos de código (head/body/footer) sin tocar el tema.', 'command-room' ),
+			'code'        => __( 'Inventario real de scripts JS y hojas de estilo del sitio, más inyección de fragmentos de código (head/body/footer) sin tocar el tema.', 'command-room' ),
 			'image-seo'   => __( 'Generación automática de atributos alt/title de imágenes.', 'command-room' ),
 			'tools'       => __( 'Herramientas de importación desde Rank Math y vista previa de metas/schema.', 'command-room' ),
 			'components'  => __( 'Bloques de front-end orientados a SEO (ticker, carruseles, FAQ, TLDR...) — activables uno a uno.', 'command-room' ),
@@ -279,7 +268,13 @@ class Cmdroom_Admin_Menu {
 		$posted     = isset( $_POST['menu_visibility'] ) ? (array) wp_unslash( $_POST['menu_visibility'] ) : array();
 		$visibility = array();
 		foreach ( self::get_submenus() as $slug => $label ) {
-			if ( 'general' === $slug ) {
+			// "general" no tiene checkbox (siempre visible). Los módulos
+			// fusionados (redirects/monitor404/cleanup, archives/
+			// breadcrumbs/image-seo/tools) tampoco tienen checkbox propio
+			// desde que se quitaron de la tabla -- guardar isset($posted[...])
+			// para ellos siempre daría false y sobrescribiría su valor
+			// antiguo en cada guardado, aunque ya nada lo lea.
+			if ( 'general' === $slug || in_array( $slug, self::MERGED_SERVER_SLUGS, true ) || in_array( $slug, self::MERGED_CONFIG_SLUGS, true ) ) {
 				continue;
 			}
 			$visibility[ $slug ] = isset( $posted[ $slug ] );
@@ -291,95 +286,107 @@ class Cmdroom_Admin_Menu {
 		exit;
 	}
 
+	/**
+	 * Rediseño completo 2026-09-24 sobre el handoff "Pantalla General"
+	 * (alta fidelidad, Modernist) -- una sola vista sin pestañas, en el
+	 * orden exacto del handoff: 0) H1, 1) rendimiento GSC, 2) patrones de
+	 * éxito, 3) tabla de módulos, 4) Top URLs, 5) auditoría del sitio,
+	 * 6) análisis y legibilidad, 7) problemas recientes + privacidad.
+	 * Las secciones 1 y 4 viven en Cmdroom_Gsc_Dashboard (ya existía);
+	 * 2, 5, 6 y 7 en Cmdroom_General_Dashboard (nuevo); la 3 se queda
+	 * aquí porque usa el estado privado de visibilidad de esta clase.
+	 * Las curvas de Core Web Vitals (CrUX) no estaban en el handoff --
+	 * se mantienen al final, es contenido nuestro añadido después.
+	 */
 	public static function render_general() {
 		$submenus    = self::get_submenus();
 		$descriptions = self::get_descriptions();
 		$visibility  = self::get_menu_visibility();
 		?>
-		<div class="wrap cmdroom-wrap">
-			<h1><?php esc_html_e( 'Command Room — General', 'command-room' ); ?></h1>
+		<div class="wrap cmdroom-wrap cmdroom-general-wrap">
+			<h1 class="cmdroom-general-h1"><?php esc_html_e( 'General', 'command-room' ); ?></h1>
 
 			<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
 				<div class="notice notice-success"><p><?php esc_html_e( 'Ajustes guardados.', 'command-room' ); ?></p></div>
 			<?php endif; ?>
 
-			<p class="description">
-				<?php esc_html_e( 'Resumen de todos los módulos del plugin. Desmarca "Mostrar en la barra lateral" para ocultar un módulo del menú de wp-admin sin desactivarlo — la página sigue siendo accesible por su URL directa.', 'command-room' ); ?>
-			</p>
+			<?php Cmdroom_Gsc_Dashboard::render_general_section(); ?>
 
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-				<?php wp_nonce_field( 'cmdroom_save_menu_visibility' ); ?>
-				<input type="hidden" name="action" value="cmdroom_save_menu_visibility" />
+			<?php Cmdroom_General_Dashboard::render_patterns_section(); ?>
 
-				<table class="widefat striped" style="max-width:1000px;">
-					<thead>
-						<tr>
-							<th><?php esc_html_e( 'Módulo', 'command-room' ); ?></th>
-							<th><?php esc_html_e( 'Descripción', 'command-room' ); ?></th>
-							<th><?php esc_html_e( 'Mostrar en la barra lateral', 'command-room' ); ?></th>
-						</tr>
-					</thead>
-					<tbody>
-						<?php foreach ( $submenus as $slug => $label ) :
-							if ( 'general' === $slug ) {
-								continue;
-							}
-							// Las pestañas de "Servidor"/"Configuración" ya no
-							// tienen página propia -- enlazan a su pestaña
-							// dentro de cmdroom-servidor/cmdroom-config en
-							// vez de a un page_slug que ya no existe.
-							if ( in_array( $slug, self::MERGED_SERVER_SLUGS, true ) ) {
-								$tab_map = array( 'redirects' => 'redirects', 'monitor404' => '404', 'cleanup' => 'clean' );
-								$url     = Cmdroom_Server_Admin::tab_url( $tab_map[ $slug ] );
-							} elseif ( in_array( $slug, self::MERGED_CONFIG_SLUGS, true ) ) {
-								$tab_map = array( 'archives' => 'archivos', 'breadcrumbs' => 'breadcrumbs', 'image-seo' => 'autoimage', 'tools' => 'tools' );
-								$url     = Cmdroom_Config_Admin::tab_url( $tab_map[ $slug ] );
-							} else {
-								$page_slug = isset( self::SLUG_OVERRIDES[ $slug ] ) ? self::SLUG_OVERRIDES[ $slug ] : self::SLUG . '-' . $slug;
-								$url       = admin_url( 'admin.php?page=' . $page_slug );
-							}
-							$description = isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : '';
-							$is_visible  = ! empty( $visibility[ $slug ] );
-							?>
+			<div class="cr-card cmdroom-general-modules-card">
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+					<?php wp_nonce_field( 'cmdroom_save_menu_visibility' ); ?>
+					<input type="hidden" name="action" value="cmdroom_save_menu_visibility" />
+
+					<table class="cmdroom-gsc-table cmdroom-general-modules-table">
+						<thead>
 							<tr>
-								<td><a href="<?php echo esc_url( $url ); ?>"><strong><?php echo esc_html( $label ); ?></strong></a></td>
-								<td><?php echo esc_html( $description ); ?></td>
-								<td>
-									<label>
-										<input type="checkbox" name="menu_visibility[<?php echo esc_attr( $slug ); ?>]" value="1" <?php checked( $is_visible ); ?> />
-										<span class="screen-reader-text"><?php esc_html_e( 'Mostrar en la barra lateral', 'command-room' ); ?></span>
-									</label>
-								</td>
+								<th><?php esc_html_e( 'Módulo', 'command-room' ); ?></th>
+								<th><?php esc_html_e( 'Descripción', 'command-room' ); ?></th>
+								<th style="text-align:right;"><?php esc_html_e( 'Barra lateral', 'command-room' ); ?></th>
 							</tr>
-						<?php endforeach; ?>
-					</tbody>
-				</table>
+						</thead>
+						<tbody>
+							<?php foreach ( $submenus as $slug => $label ) :
+								if ( 'general' === $slug ) {
+									continue;
+								}
+								// Redirecciones/Monitor 404/Limpieza y Archivos/
+								// Breadcrumbs/Auto-Image SEO/Herramientas ya no son
+								// módulos con entrada propia -- son pestañas dentro
+								// de "Servidor" y "Configuración". Se quedan en
+								// get_submenus() solo porque register_menu() los
+								// necesita para el toggle agregado de esas dos
+								// páginas (any_server_module_visible()/
+								// any_config_module_visible()), pero no pintan fila
+								// propia aquí -- petición de Damien 2026-09-24, la
+								// tabla se queda solo con los 9 módulos reales.
+								if ( in_array( $slug, self::MERGED_SERVER_SLUGS, true ) || in_array( $slug, self::MERGED_CONFIG_SLUGS, true ) ) {
+									continue;
+								}
+								$page_slug   = isset( self::SLUG_OVERRIDES[ $slug ] ) ? self::SLUG_OVERRIDES[ $slug ] : self::SLUG . '-' . $slug;
+								$url         = admin_url( 'admin.php?page=' . $page_slug );
+								$description = isset( $descriptions[ $slug ] ) ? $descriptions[ $slug ] : '';
+								$is_visible  = ! empty( $visibility[ $slug ] );
+								?>
+								<tr>
+									<td><a href="<?php echo esc_url( $url ); ?>" class="cmdroom-general-module-link"><?php echo esc_html( $label ); ?></a></td>
+									<td class="cmdroom-general-muted"><?php echo esc_html( $description ); ?></td>
+									<td style="text-align:right;">
+										<label class="cmdroom-general-toggle-label">
+											<span class="screen-reader-text"><?php esc_html_e( 'Mostrar en la barra lateral', 'command-room' ); ?></span>
+											<span class="cmdroom-general-toggle<?php echo $is_visible ? ' is-active' : ''; ?>" aria-hidden="true">
+												<input type="checkbox" name="menu_visibility[<?php echo esc_attr( $slug ); ?>]" value="1" <?php checked( $is_visible ); ?> />
+												<span class="cmdroom-general-toggle-knob"></span>
+											</span>
+										</label>
+									</td>
+								</tr>
+							<?php endforeach; ?>
+						</tbody>
+					</table>
 
-				<?php submit_button( __( 'Guardar', 'command-room' ) ); ?>
-			</form>
+					<?php submit_button( __( 'Guardar', 'command-room' ), 'cr-btn-primary', 'submit', false, array( 'style' => 'margin:18px 0 28px;' ) ); ?>
+				</form>
+			</div>
 
-			<hr />
+			<?php Cmdroom_Gsc_Dashboard::render_top_urls_section(); ?>
+
+			<?php Cmdroom_General_Dashboard::render_audit_section(); ?>
+
+			<?php Cmdroom_General_Dashboard::render_readability_section(); ?>
+
+			<?php Cmdroom_General_Dashboard::render_recent_and_privacy_section(); ?>
 
 			<?php
-			// Separador (%sep%) y salida en vivo de Metas: se movieron aquí
-			// con el rediseño de la pantalla "Meta data" (Claude Design), que
-			// ya no los incluye -- ver Cmdroom_Meta_Settings::render_general_section().
-			Cmdroom_Meta_Settings::render_general_section();
-
-			// Salida en vivo de Datos estructurados: mismo motivo, movida
-			// aquí con el rediseño de esa pantalla -- ver
-			// Cmdroom_Schema_Settings::render_general_section().
-			Cmdroom_Schema_Settings::render_general_section();
-
-			// Salida en vivo de Sitemaps + vista previa: mismo motivo,
-			// movidas aquí con el rediseño de esa pantalla -- ver
-			// Cmdroom_Sitemap_Settings::render_general_section().
-			Cmdroom_Sitemap_Settings::render_general_section();
-
-			// Salida en vivo de Redirecciones (pestaña de "Servidor"): mismo
-			// motivo -- ver Cmdroom_Redirect_Admin::render_general_section().
-			Cmdroom_Redirect_Admin::render_general_section();
+			// Curvas de Core Web Vitals (CrUX) por tipo de contenido --
+			// pedido por Damien 2026-09-24, fuera del alcance del handoff de
+			// General (llegó después). Se queda al final. Ver
+			// Cmdroom_Crux_Dashboard::render_general_section().
 			?>
+			<hr class="cmdroom-general-hr" />
+			<?php Cmdroom_Crux_Dashboard::render_general_section(); ?>
 		</div>
 		<?php
 	}
@@ -450,7 +457,7 @@ class Cmdroom_Admin_Menu {
 	}
 
 	public static function render_code() {
-		Cmdroom_Code_Injection::render_page();
+		Cmdroom_Code_Admin::render_page();
 	}
 
 	public static function render_config() {

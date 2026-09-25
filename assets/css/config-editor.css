@@ -65,6 +65,15 @@
 	border-top: 2px solid var(--cmdroom-divider);
 }
 
+/* Google Search Console es lo primero de Herramientas desde el reorden
+   2026-09-25 -- sin el divisor/margen de arriba, que ahí no separa de
+   nada y solo deja una línea suelta pegada al final de las pestañas. */
+.cmdroom-config-extra-first {
+	margin-top: 0;
+	padding-top: 0;
+	border-top: none;
+}
+
 .cmdroom-config-extra h3 {
 	font-weight: 600;
 	font-size: 11.5px;
@@ -129,6 +138,10 @@
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 	gap: 16px;
+	/* Aire alrededor de las tarjetas de importación (Rank Math/Yoast),
+	   pedido por Damien 2026-09-25 -- separación clara de CrUX arriba y
+	   de "Salida en el sitio" abajo. */
+	margin: 32px 0;
 }
 
 .cmdroom-config-tools-card {
@@ -169,38 +182,6 @@
 	color: var(--cmdroom-text-muted);
 }
 
-.cmdroom-config-tools-preview-row {
-	display: flex;
-	gap: 8px;
-	margin-bottom: 14px;
-}
-
-.cmdroom-config-tools-preview-row .cr-input {
-	min-width: 0;
-	flex: 1;
-}
-
-.cmdroom-config-tools-preview-row .cr-btn-secondary {
-	white-space: nowrap;
-}
-
-.cmdroom-config-tools-result {
-	background: #1c1c1c;
-	color: #e5e5e5;
-	font-family: ui-monospace, Menlo, monospace;
-	font-size: 12.5px;
-	line-height: 1.6;
-	padding: 14px 16px;
-	overflow-x: auto;
-	white-space: pre;
-	margin: 0;
-}
-
-.cmdroom-config-tools-notfound {
-	color: var(--cmdroom-accent-dark);
-	font-size: 13px;
-}
-
 /* — IA (llms.txt + markdown de páginas) y Tags — */
 
 .cmdroom-ia-block {
@@ -221,6 +202,33 @@
 	font-weight: 700;
 	font-size: 16px;
 	margin: 0 0 4px;
+}
+
+/* "Salida en el sitio" agrupa 4 formularios independientes (Metas/Datos
+   estructurados/Sitemaps/Redirecciones, cada uno con su propio guardado)
+   dentro de un único cuadro -- pedido por Damien 2026-09-25. El divisor
+   entre cada <h2> los distingue visualmente sin que parezca un solo
+   formulario mezclado. */
+.cmdroom-tools-salida-card h2:not(.cmdroom-ia-block-title) {
+	font-size: 14px;
+	margin: 20px 0 4px;
+	padding-top: 16px;
+	border-top: 1px solid var(--cmdroom-divider);
+}
+
+.cmdroom-tags-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.cmdroom-tags-header-actions .cr-input {
+	width: 220px;
+}
+
+.cmdroom-tags-custom-pill {
+	margin-left: 8px;
 }
 
 .cmdroom-ia-field {
@@ -294,8 +302,10 @@
 	font-size: 11px;
 	text-transform: uppercase;
 	letter-spacing: .04em;
-	color: var(--cmdroom-text-muted);
+	color: #fff;
+	background: var(--cr-table-head);
 	font-weight: 600;
+	border-bottom: none;
 }
 
 .cmdroom-tags-row.is-empty td:first-child {
@@ -328,4 +338,61 @@
 		order: 3;
 		margin-left: 54px;
 	}
+}
+
+/* — Coexistencia con Rank Math / Yoast SEO — pintado antes de los toggles
+   de "Salida en el sitio" para que el riesgo de doble output se vea primero — */
+
+.cmdroom-seo-coexist {
+	margin-bottom: 20px;
+	border: 1px solid var(--cmdroom-divider);
+}
+
+.cmdroom-seo-coexist.is-warning {
+	border: 2px solid var(--cmdroom-accent);
+	background: var(--cmdroom-accent-100);
+}
+
+.cmdroom-seo-coexist-title {
+	margin-top: 0;
+}
+
+.cmdroom-seo-coexist-ok {
+	color: var(--cmdroom-text-muted);
+	margin-bottom: 0;
+}
+
+.cmdroom-seo-coexist-warn {
+	color: var(--cmdroom-accent-dark);
+	font-weight: 600;
+	margin-top: 0;
+}
+
+.cmdroom-seo-coexist-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 10px;
+}
+
+.cmdroom-seo-coexist-badge {
+	display: inline-block;
+	background: var(--cmdroom-accent);
+	color: #fff;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	padding: 5px 10px;
+	border-radius: 4px;
+}
+
+.cmdroom-seo-coexist-btn.button.button-primary {
+	background: var(--cmdroom-accent-dark);
+	border-color: var(--cmdroom-accent-dark);
+}
+
+.cmdroom-seo-coexist-btn.button.button-primary:hover {
+	background: var(--cmdroom-accent);
+	border-color: var(--cmdroom-accent);
 }

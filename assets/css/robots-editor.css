@@ -120,7 +120,9 @@
 	font-size: 11px;
 	text-transform: uppercase;
 	letter-spacing: .03em;
-	color: var(--cmdroom-text-muted);
+	color: #fff;
+	background: var(--cr-table-head);
+	border-bottom: none;
 	vertical-align: bottom;
 }
 

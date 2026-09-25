@@ -165,10 +165,12 @@
 	margin-top: 2px;
 }
 
-/* Resaltado de claves JSON dentro del terminal (además de %variables%, que
-   ya cubre meta-editor.css) */
+/* Las claves JSON ("@type", "name"...) se pintan en blanco, igual que el
+   resto del texto -- solo las %variables% reales (.cmdroom-md-var, en
+   meta-editor.css) llevan el naranja de acento, para que resalten de
+   verdad en vez de perderse entre el resto de claves en el mismo color. */
 .cmdroom-md-code .cmdroom-md-key {
-	color: var(--cmdroom-terminal-var);
+	color: var(--cmdroom-terminal-text);
 }
 
 .cmdroom-schema-empty {
@@ -179,10 +181,69 @@
 
 /* Librería */
 
+.cmdroom-schema-library-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	margin-bottom: 12px;
+}
+
+.cmdroom-schema-btn {
+	background: #fff;
+	border: 1.5px solid var(--cmdroom-divider);
+	border-radius: 0;
+	padding: 6px 14px;
+	font: 600 12px "Archivo", sans-serif;
+	color: var(--cmdroom-text);
+	cursor: pointer;
+}
+.cmdroom-schema-btn:hover {
+	border-color: var(--cmdroom-accent);
+}
+.cmdroom-schema-btn-primary {
+	background: var(--cmdroom-accent);
+	border-color: var(--cmdroom-accent);
+	color: #fff;
+}
+.cmdroom-schema-btn-primary:hover {
+	background: var(--cmdroom-accent-dark);
+}
+
 .cmdroom-schema-library-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 	gap: 12px;
+}
+
+.cmdroom-schema-card.is-editing {
+	grid-column: 1 / -1;
+	border-color: var(--cmdroom-accent);
+}
+
+.cmdroom-schema-card-badges {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.cmdroom-schema-badge.custom {
+	background: #e0e7ff;
+	color: #3730a3;
+}
+.cmdroom-schema-badge.edited {
+	background: #dcfce7;
+	color: #15803d;
+}
+
+.cmdroom-schema-desc-input {
+	width: 100%;
+	border: 1.5px solid var(--cmdroom-divider);
+	border-radius: 0;
+	padding: 8px 10px;
+	font: 400 12.5px "Archivo", sans-serif;
+	color: var(--cmdroom-text);
+	resize: vertical;
+	margin-bottom: 4px;
 }
 
 .cmdroom-schema-card {

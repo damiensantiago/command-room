@@ -52,6 +52,13 @@ class Cmdroom_Sitemap_Rewrite {
 	}
 
 	private static function output( $xml ) {
+		// Sin esto sale con cabecera 404 -- estas URLs no casan con ningún
+		// post/página real, así que WP::handle_404() ya ha marcado la
+		// petición como no encontrada antes de llegar a template_redirect
+		// (mismo problema visto en /llms.txt, ver Cmdroom_Ia_Output). El
+		// contenido salía correcto, solo la cabecera estaba mal -- lo
+		// detectó Damien 2026-09-24 probando la vista previa en la URL real.
+		status_header( 200 );
 		header( 'Content-Type: application/xml; charset=UTF-8' );
 		echo $xml; // ya viene escapado como XML en Cmdroom_Sitemap_Render
 		exit;

@@ -44,6 +44,18 @@ class Cmdroom_Meta_Settings {
 		return isset( $opts['separator'] ) ? $opts['separator'] : '-';
 	}
 
+	/**
+	 * Escritura directa del separador desde fuera de esta clase -- lo usa
+	 * Cmdroom_Variables_Settings::handle_save() (pestaña "Variables") para
+	 * que %sep% tenga un único hogar de verdad (esta opción) en vez de una
+	 * copia propia, aunque se pueda editar desde dos pantallas distintas.
+	 */
+	public static function set_separator( $separator ) {
+		$opts              = self::get_options();
+		$opts['separator'] = (string) $separator;
+		update_option( self::OPTION, $opts );
+	}
+
 	public static function get_options() {
 		$defaults = self::defaults();
 		$saved    = get_option( self::OPTION, array() );
@@ -158,15 +170,22 @@ class Cmdroom_Meta_Settings {
 	 * Diferencias deliberadas respecto al ejemplo:
 	 *  - Sin los atributos `data-ue-c`/`data-ue-u` del <title> -- son de un
 	 *    editor visual propio de ese sitio, no significan nada aquí.
-	 *  - Sin `article:section`/`article:modified_time`/`og:updated_time` --
-	 *    son propiedades del namespace `article:` de Open Graph, y esta
-	 *    plantilla usa `og:type="website"` (la Home no es un artículo); no
-	 *    tiene sentido mezclar ambos vocabularios.
-	 *  - Sin favicons (`<link rel="icon">` etc.) -- WordPress ya los imprime
-	 *    solo si hay un Site Icon configurado (Ajustes → General); añadirlos
-	 *    aquí a mano los duplicaría exactamente igual que pasó con el
-	 *    <title>/canonical/robots nativos. Si no hay Site Icon puesto, se
-	 *    configura ahí, no en Metas.
+	 *  - Sin `article:section` -- es del namespace `article:` de Open Graph
+	 *    y esta plantilla usa `og:type="website"` (la Home no es un
+	 *    artículo), no tiene sentido mezclar ambos vocabularios. Pero
+	 *    `article:modified_time`/`og:updated_time`/`DC.date.issued` SÍ van
+	 *    (pedido explícito de Damien 2026-09-24, aunque repita el criterio
+	 *    de arriba): usan `%last_modified%`, la fecha de la publicación más
+	 *    reciente del sitio, ya que Home no tiene una fecha de modificación
+	 *    propia por no ser un post.
+	 *  - Favicons (`<link rel="icon">` etc.) SÍ van, aunque WordPress ya
+	 *    imprime los suyos vía wp_site_icon() cuando hay un Site Icon
+	 *    configurado (Ajustes → General) -- pedido explícito de Damien
+	 *    2026-09-24 para tener también su propio juego con `rel="shortcut
+	 *    icon"`/`apple-touch-icon-precomposed`, que WordPress no imprime.
+	 *    Usan `%favicon%`, la misma imagen del Site Icon para los cuatro
+	 *    tamaños -- hoy solo hay un icono cuadrado de 512×512 subido, sin
+	 *    recortes propios en 32/96/180.
 	 *  - Sin `<meta name="viewport">` ni el `<meta http-equiv="Content-Type">`
 	 *    de charset -- probado en vivo el 2026-09-18 y AMBOS salían
 	 *    duplicados contra lo que ya imprime WordPress/el tema por su cuenta
@@ -185,6 +204,10 @@ class Cmdroom_Meta_Settings {
 			"\n",
 			array(
 				'<meta http-equiv="X-UA-Compatible" content="IE=edge;chrome=1" />',
+				'<link rel="shortcut icon" type="image/x-icon" href="%favicon%" />',
+				'<link rel="icon" type="image/png" sizes="32x32" href="%favicon%" />',
+				'<link rel="icon" type="image/png" sizes="96x96" href="%favicon%" />',
+				'<link rel="apple-touch-icon-precomposed" sizes="180x180" href="%favicon%" />',
 				'<title>%sitename% %sep% %sitedesc%</title>',
 				'<meta name="title" content="%sitename% %sep% %sitedesc%" />',
 				'<meta name="description" content="%sitedesc%" />',
@@ -199,6 +222,9 @@ class Cmdroom_Meta_Settings {
 				'<meta property="og:site_name" content="%sitename%" />',
 				'<meta property="og:url" content="%url%" />',
 				'<meta property="og:image" content="%image%" />',
+				'<meta property="article:modified_time" content="%last_modified%" />',
+				'<meta property="og:updated_time" content="%last_modified%" />',
+				'<meta name="DC.date.issued" content="%last_modified%" />',
 				'<!-- fb:app_id: pon aquí el App ID de Facebook si tienes uno registrado -->',
 				'<!-- <meta property="fb:app_id" content="" /> -->',
 				'<meta name="twitter:card" content="summary_large_image" />',
@@ -219,6 +245,147 @@ class Cmdroom_Meta_Settings {
 	 */
 	private static function og_type_for_post_type( $post_type ) {
 		return 'page' === $post_type ? 'website' : 'article';
+	}
+
+	/**
+	 * Bloque de <head> específico para Contenido (posts) -- pedido por
+	 * Damien el 2026-09-24 a partir de otro ejemplo real de MARCA.com (una
+	 * ficha de artículo), mismo criterio que default_home_block(): variables
+	 * de Command Room en vez del contenido fijo del ejemplo. Solo se usa en
+	 * defaults()['contenido'] -- "Páginas corporativas" sigue con
+	 * default_meta_block(), sin estos añadidos (no son artículos, no tienen
+	 * autor/fecha de publicación real).
+	 *
+	 * Diferencias deliberadas respecto al ejemplo:
+	 *  - Sin los atributos `data-ue-u`/`data-ue-c`/`data-page-subject` -- son
+	 *    de un editor visual propio de ese sitio, no significan nada aquí.
+	 *  - `<title>` y `og:title`/`twitter:title` van SOLO con el titular
+	 *    (`%title%`), sin `%sitename%` -- así lo hace el propio ejemplo (el
+	 *    sufijo " | MARCA" solo aparece en `<meta name="title">`, no en el
+	 *    resto). Se respeta esa distinción tal cual.
+	 *  - Sin `<meta http-equiv="Content-Type">` de charset ni
+	 *    `<meta name="viewport">` -- mismo motivo que en Home, WordPress ya
+	 *    los imprime nativamente y salen duplicados.
+	 *  - Sin `<link rel="amphtml">` -- apuntaría a una versión AMP que este
+	 *    sitio no tiene; añadirlo sería un enlace roto. Si algún día hay
+	 *    páginas AMP, se retoma.
+	 *  - `fb:app_id`/`fb:pages`/`twitter:site`/`twitter:creator` van
+	 *    comentados, igual que en Home: son valores fijos de cuenta sin
+	 *    variable equivalente y sin cuenta real todavía.
+	 *  - Favicons: solo los 3 `<link>` que trae el ejemplo (sin
+	 *    apple-touch-icon-precomposed, que sí lleva Home) -- se respeta el
+	 *    conjunto exacto que pidió Damien para esta pestaña.
+	 */
+	private static function default_content_block() {
+		return implode(
+			"\n",
+			array(
+				'<title>%title%</title>',
+				'<meta name="title" content="%title% %sep% %sitename%" />',
+				'<meta name="description" content="%excerpt%" />',
+				'<link rel="canonical" href="%url%" />',
+				'<meta name="robots" content="%robots%" />',
+				'<link rel="shortcut icon" type="image/x-icon" href="%favicon%" />',
+				'<link rel="icon" type="image/png" sizes="32x32" href="%favicon%" />',
+				'<link rel="icon" type="image/png" sizes="96x96" href="%favicon%" />',
+				'<meta name="date" content="%date_iso%" />',
+				'<meta property="article:published_time" content="%date_iso%" />',
+				'<meta property="article:modified_time" content="%date_modified_iso%" />',
+				'<meta name="DC.date.issued" content="%date_iso%" />',
+				'<meta name="author" content="%author_name%" />',
+				'<meta property="article:author" content="%author_name%" />',
+				'<meta name="organization" content="%organization%" />',
+				'<meta property="article:section" content="%category%" />',
+				'<meta property="og:type" content="article" />',
+				'<meta property="og:title" content="%title%" />',
+				'<meta property="og:description" content="%excerpt%" />',
+				'<meta property="og:site_name" content="%sitename%" />',
+				'<meta property="og:url" content="%url%" />',
+				'<meta property="og:image" content="%image%" />',
+				'<meta property="og:image:width" content="%image_width%" />',
+				'<meta property="og:image:height" content="%image_height%" />',
+				'<meta property="og:updated_time" content="%date_modified_iso%" />',
+				'<meta property="og:locale" content="%og_locale%" />',
+				'<!-- fb:app_id / fb:pages: no hay cuenta de Facebook todavía -- descomenta y rellena si se crea una -->',
+				'<!-- <meta property="fb:app_id" content="" /> -->',
+				'<!-- <meta property="fb:pages" content="" /> -->',
+				'<meta name="twitter:card" content="summary_large_image" />',
+				'<!-- twitter:site / twitter:creator: no hay cuenta de X/Twitter todavía -->',
+				'<!-- <meta name="twitter:site" content="" /> -->',
+				'<!-- <meta name="twitter:creator" content="" /> -->',
+				'<meta name="twitter:title" content="%title%" />',
+				'<meta name="twitter:description" content="%excerpt%" />',
+				'<meta name="twitter:image" content="%image%" />',
+				'<meta name="twitter:image:width" content="%image_width%" />',
+				'<meta name="twitter:image:height" content="%image_height%" />',
+			)
+		);
+	}
+
+	/**
+	 * Bloque de <head> específico para la Página de autor -- pedido por
+	 * Damien el 2026-09-24 a partir de otro ejemplo real de MARCA.com (una
+	 * ficha de autor), mismo criterio que default_home_block()/
+	 * default_content_block().
+	 *
+	 * Diferencias deliberadas respecto al ejemplo:
+	 *  - Sin los atributos `data-ue-c`/`data-ue-u` del <title>.
+	 *  - Sin charset/viewport -- WordPress ya los imprime nativamente.
+	 *  - `description`/`og:description`/`twitter:description` van con
+	 *    `%author_name%` (no `%excerpt%`/la bio): así lo hace el propio
+	 *    ejemplo, repitiendo el nombre en los tres -- se respeta tal cual en
+	 *    vez de usar la biografía, que en Dripbase hoy no está rellena para
+	 *    la mayoría de autores y dejaría el tag vacío.
+	 *  - `keywords`/`news_keywords` van con `%author_name%` por el mismo
+	 *    motivo (el ejemplo repite el nombre ahí también).
+	 *  - `twitter:card` se deja en `summary_large_image` en vez del
+	 *    `summary` del ejemplo -- mismo criterio ya aplicado en Home/
+	 *    Contenido, consistencia dentro del plugin en vez de replicar la
+	 *    inconsistencia del ejemplo entre páginas.
+	 *  - `article:modified_time`/`og:updated_time`/`DC.date.issued` usan
+	 *    `%last_modified%`, que en esta página resuelve a la publicación más
+	 *    reciente DE ESE AUTOR (no la del sitio entero) -- ver
+	 *    Cmdroom_Meta_Variables::get_last_modified_time().
+	 *  - Favicons: mismo conjunto de 3 que Contenido (sin
+	 *    apple-touch-icon-precomposed).
+	 *  - `fb:app_id`/`twitter:site`/`twitter:creator` van comentados, sin
+	 *    cuentas reales todavía.
+	 */
+	private static function default_author_block() {
+		return implode(
+			"\n",
+			array(
+				'<meta http-equiv="X-UA-Compatible" content="IE=edge;chrome=1" />',
+				'<title>%author_name% %sep% %sitename%</title>',
+				'<meta name="description" content="%author_name%" />',
+				'<meta name="keywords" content="%author_name%" />',
+				'<meta name="news_keywords" content="%author_name%" />',
+				'<meta name="robots" content="%robots%" />',
+				'<link rel="canonical" href="%url%" />',
+				'<meta name="organization" content="%organization%" />',
+				'<link rel="shortcut icon" type="image/x-icon" href="%favicon%" />',
+				'<link rel="icon" type="image/png" sizes="32x32" href="%favicon%" />',
+				'<link rel="icon" type="image/png" sizes="96x96" href="%favicon%" />',
+				'<meta property="og:type" content="website" />',
+				'<meta property="og:title" content="%author_name%" />',
+				'<meta property="og:description" content="%author_name%" />',
+				'<meta property="og:site_name" content="%sitename%" />',
+				'<meta property="og:url" content="%url%" />',
+				'<meta property="og:image" content="%image%" />',
+				'<meta property="article:modified_time" content="%last_modified%" />',
+				'<meta property="og:updated_time" content="%last_modified%" />',
+				'<meta name="DC.date.issued" content="%last_modified%" />',
+				'<!-- fb:app_id: no hay cuenta de Facebook todavía -->',
+				'<!-- <meta property="fb:app_id" content="" /> -->',
+				'<meta name="twitter:card" content="summary_large_image" />',
+				'<!-- twitter:site / twitter:creator: no hay cuenta de X/Twitter todavía -->',
+				'<!-- <meta name="twitter:site" content="" /> -->',
+				'<!-- <meta name="twitter:creator" content="" /> -->',
+				'<meta name="twitter:title" content="%author_name%" />',
+				'<meta name="twitter:description" content="%author_name%" />',
+				'<meta name="twitter:image" content="%image%" />',
+			)
+		);
 	}
 
 	/**
@@ -259,7 +426,7 @@ class Cmdroom_Meta_Settings {
 				'html' => self::default_home_block(),
 			),
 			'contenido'      => array(
-				'html' => self::default_meta_block( '%title% %sep% %sitename%', '%excerpt%', 'article' ),
+				'html' => self::default_content_block(),
 			),
 			'corporativas'   => array(
 				'html' => self::default_meta_block( '%title% %sep% %sitename%', '%excerpt%', self::og_type_for_post_type( 'page' ) ),
@@ -271,7 +438,7 @@ class Cmdroom_Meta_Settings {
 				'html' => self::default_meta_block( '%term_title% %sep% %sitename%', '%excerpt%', 'website' ),
 			),
 			'author_archive' => array(
-				'html' => self::default_meta_block( '%author_name% %sep% %sitename%', '%excerpt%', 'website' ),
+				'html' => self::default_author_block(),
 			),
 		);
 	}
@@ -383,6 +550,23 @@ class Cmdroom_Meta_Settings {
 		<?php
 	}
 
+	/**
+	 * El <textarea> real que respalda el editor "terminal" viaja en el POST
+	 * con saltos de línea \r\n -- el navegador normaliza así CUALQUIER
+	 * textarea al construir el formulario (es el propio comportamiento del
+	 * form, no algo que controle nuestro JS de resaltado). Río abajo,
+	 * Cmdroom_Meta_Variables::replace() colapsa 2+ espacios en blanco
+	 * seguidos (\s{2,}) para limpiar huecos cuando una variable se resuelve
+	 * vacía -- y un \r\n cuenta como 2 caracteres, así que cada salto de
+	 * línea real acababa colapsado a un único espacio en el <head>. Bug real
+	 * reportado por Damien el 2026-09-24 ("vuelve a juntarse en una fila" al
+	 * guardar) -- se corrige aquí, en el guardado, no en el regex de
+	 * salida (ese regex sigue haciendo falta para el caso de variable vacía).
+	 */
+	private static function normalize_line_endings( $html ) {
+		return str_replace( array( "\r\n", "\r" ), "\n", (string) $html );
+	}
+
 	public static function handle_save() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'No tienes permiso para hacer esto.', 'command-room' ) );
@@ -407,7 +591,7 @@ class Cmdroom_Meta_Settings {
 		// get_taxonomy_template().
 		foreach ( array( 'home_html' => 'home', 'contenido_html' => 'contenido', 'corporativas_html' => 'corporativas', 'categorias_html' => 'categorias', 'tags_html' => 'tags', 'author_archive_html' => 'author_archive' ) as $field => $group ) {
 			if ( isset( $_POST[ $field ] ) ) {
-				$opts[ $group ]['html'] = wp_unslash( $_POST[ $field ] );
+				$opts[ $group ]['html'] = self::normalize_line_endings( wp_unslash( $_POST[ $field ] ) );
 			}
 		}
 
@@ -472,9 +656,11 @@ class Cmdroom_Meta_Settings {
 			'%title%', '%sitename%', '%sitedesc%', '%sep%', '%excerpt%', '%category%',
 			'%author_name%', '%date%', '%currentyear%', '%page%', '%term_title%',
 			'%term_description%', '%url%', '%robots%', '%image%', '%keywords%',
+			'%favicon%', '%last_modified%', '%date_iso%', '%date_modified_iso%', '%og_locale%',
+			'%image_width%', '%image_height%',
 		);
 		?>
-		<div class="wrap cmdroom-wrap cmdroom-metadata-wrap">
+		<div class="wrap cmdroom-wrap cmdroom-metadata-wrap cmdroom-meta-wrap">
 			<?php if ( isset( $_GET['cmdroom_saved'] ) ) : ?>
 				<div class="notice notice-success"><p><?php esc_html_e( 'Ajustes guardados.', 'command-room' ); ?></p></div>
 			<?php endif; ?>

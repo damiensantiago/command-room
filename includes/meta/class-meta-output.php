@@ -25,12 +25,57 @@ class Cmdroom_Meta_Output {
 
 	public static function init() {
 		add_action( 'wp_head', array( __CLASS__, 'maybe_unhook_native_tags' ), 0 );
+		add_action( 'wp_head', array( __CLASS__, 'start_core_style_capture' ), 0 );
+		add_action( 'wp_head', array( __CLASS__, 'end_core_style_capture' ), 1 );
 		add_action( 'wp_head', array( __CLASS__, 'print_meta_tags' ), 1 );
 		add_filter( 'wp_robots', array( __CLASS__, 'silence_native_robots' ), 9999 );
 	}
 
 	private static function is_active() {
 		return ! is_admin() && Cmdroom_Meta_Settings::is_live_output_enabled();
+	}
+
+	/**
+	 * WordPress core imprime un <style> propio en wp_head (desde 6.7.1,
+	 * wp_print_auto_sizes_contain_css_fix() en wp-includes/media.php --
+	 * ver docblock de end_core_style_capture()) con indentación fija que no
+	 * es segura de tocar en el archivo core -- se perdería en el próximo
+	 * update de WordPress. Damien pidió el 2026-09-24 que el <head> saliera
+	 * alineado a la izquierda, incluida esa línea y la que viene justo
+	 * después (el bloque de metas de Command Room, que heredaba el tab
+	 * colgante que deja esa función core tras su propio cierre). Se resuelve
+	 * capturando SOLO la salida de esa función concreta en un buffer y
+	 * reimprimiéndola ya recortada -- nunca tocamos wp-includes.
+	 *
+	 * Coincide a propósito con la prioridad 1 de esa función core
+	 * (wp-includes/default-filters.php) -- como ese archivo se carga en el
+	 * arranque de WordPress, siempre se registra antes que cualquier
+	 * callback de un plugin, así que dentro del mismo cubo de prioridad "1"
+	 * ella corre primero y end_core_style_capture() (registrada después, en
+	 * este mismo init()) la captura justo a continuación, antes de que
+	 * print_meta_tags() imprima lo nuestro.
+	 */
+	public static function start_core_style_capture() {
+		if ( ! self::is_active() ) {
+			return;
+		}
+		ob_start();
+	}
+
+	/**
+	 * Recorta la salida capturada (espacios/tabs al principio y al final) y
+	 * la reimprime en una sola línea limpia -- si el filtro
+	 * `wp_img_tag_add_auto_sizes` está desactivado, wp_print_auto_sizes_contain_css_fix()
+	 * no imprime nada y aquí simplemente no hay nada que reimprimir.
+	 */
+	public static function end_core_style_capture() {
+		if ( ! self::is_active() ) {
+			return;
+		}
+		$buffered = trim( ob_get_clean() );
+		if ( '' !== $buffered ) {
+			echo $buffered . "\n"; // phpcs:ignore WordPress.Security.EscapeOutput -- es la salida nativa de WordPress core, solo se le quita la indentación
+		}
 	}
 
 	/**
